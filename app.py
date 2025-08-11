@@ -1,4 +1,4 @@
-# app.py — Seguimiento de actividades (SQLite) con 10 planes precargados
+# app.py — Seguimiento de Actividades (SQLite) con migración de esquema + 10 planes precargados
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -108,8 +108,8 @@ SEED_PLANES = [
     {
         "indole": "Operativo",
         "actividad_estrategica": (
-            "Desarrollo de operativos interinstitucionales de control dirigidos a la regulación de ventas informales y actividades no autorizadas "
-            "de cobro de parqueo en zona costera."
+            "Desarrollo de operativos interinstitucionales de control dirigidos a la regulación de ventas informales y actividades "
+            "no autorizadas de cobro de parqueo en zona costera."
         ),
         "zona_trabajo": "Flamingo y Brasilito",
         "actores": "Fuerza Pública; Policía de Tránsito; Policía de Migración; Policía Turística; DIAC",
@@ -126,8 +126,8 @@ SEED_PLANES = [
     {
         "indole": "Preventivo",
         "actividad_estrategica": (
-            "Implementación de acciones preventivas, lideradas por programas policiales, orientadas a la recreación y apropiación positiva "
-            "de espacios públicos."
+            "Implementación de acciones preventivas, lideradas por programas policiales, orientadas a la recreación y apropiación "
+            "positiva de espacios públicos."
         ),
         "zona_trabajo": "Brasilito",
         "actores": "Fuerza Pública",
@@ -144,8 +144,8 @@ SEED_PLANES = [
     {
         "indole": "Preventivo",
         "actividad_estrategica": (
-            "Ejecución de talleres y jornadas de sensibilización en seguridad comercial, dirigidas a fortalecer las capacidades preventivas "
-            "del sector empresarial."
+            "Ejecución de talleres y jornadas de sensibilización en seguridad comercial, dirigidas a fortalecer las capacidades "
+            "preventivas del sector empresarial."
         ),
         "zona_trabajo": "Brasilito",
         "actores": "Fuerza Pública",
@@ -155,15 +155,15 @@ SEED_PLANES = [
         "meta_total": 6,
         "responsable": "Director Regional",
         "efecto_esperado": (
-            "Mejorar la percepción de seguridad y fortalecer la capacidad de prevención del delito en el sector comercial, mediante la adopción "
-            "de buenas prácticas y la actualización continua."
+            "Mejorar la percepción de seguridad y fortalecer la capacidad de prevención del delito en el sector comercial, mediante la "
+            "adopción de buenas prácticas y la actualización continua."
         ),
     },
     {
         "indole": "Operativo",
         "actividad_estrategica": (
-            "Ejecución de operativos policiales focalizados para abordaje e identificación de personas y vehículos vinculados a delitos de "
-            "robo en viviendas, en coordinación con unidades de información e inteligencia policial."
+            "Ejecución de operativos policiales focalizados para abordaje e identificación de personas y vehículos vinculados a "
+            "delitos de robo en viviendas, en coordinación con unidades de información e inteligencia policial."
         ),
         "zona_trabajo": "Surfside",
         "actores": "Fuerza Pública",
@@ -173,15 +173,15 @@ SEED_PLANES = [
         "meta_total": 6,
         "responsable": "Jefe de delegación policial de Santa Cruz",
         "efecto_esperado": (
-            "Reducir la incidencia de robos a viviendas mediante la identificación oportuna de objetivos vinculados, así como el fortalecimiento "
-            "de la capacidad de respuesta y disuasión policial en zonas residenciales vulnerables."
+            "Reducir la incidencia de robos a viviendas mediante la identificación oportuna de objetivos vinculados, así como el "
+            "fortalecimiento de la capacidad de respuesta y disuasión policial en zonas residenciales vulnerables."
         ),
     },
     {
         "indole": "Preventivo",
         "actividad_estrategica": (
-            "Capacitaciones en Seguridad Comunitaria, dirigidas a residentes extranjeros angloparlantes, con el fin de mejorar su integración "
-            "y participación en los servicios preventivos locales."
+            "Capacitaciones en Seguridad Comunitaria, dirigidas a residentes extranjeros angloparlantes, con el fin de mejorar su "
+            "integración y participación en los servicios preventivos locales."
         ),
         "zona_trabajo": "Surfside",
         "actores": "Fuerza Pública",
@@ -191,22 +191,28 @@ SEED_PLANES = [
         "meta_total": 1,
         "responsable": "Director Regional",
         "efecto_esperado": (
-            "Mejorar el nivel de conocimiento y la capacidad de respuesta de la población extranjera residente, promoviendo su vinculación con "
-            "las estrategias de seguridad comunitaria y fortaleciendo la cohesión social."
+            "Mejorar el nivel de conocimiento y la capacidad de respuesta de la población extranjera residente, promoviendo su "
+            "vinculación con las estrategias de seguridad comunitaria y fortaleciendo la cohesión social."
         ),
     },
 ]
 # ================================================================
 
-# ===================== SQLite =====================
-def conn():
-    c = sqlite3.connect(DB_PATH, check_same_thread=False)
-    c.execute("PRAGMA foreign_keys = ON;")
-    return c
+# ===================== SQLite (con migración) =====================
+def get_conn():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
 
-def init_db():
-    c = conn()
-    c.executescript("""
+def table_has_column(conn, table, col):
+    cur = conn.execute(f"PRAGMA table_info({table});")
+    cols = [r[1] for r in cur.fetchall()]
+    return col in cols
+
+def ensure_schema():
+    conn = get_conn()
+    # 1) Crea tablas si no existen (con el esquema final)
+    conn.executescript("""
     CREATE TABLE IF NOT EXISTS planes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         indole TEXT NOT NULL,
@@ -218,9 +224,7 @@ def init_db():
         periodicidad TEXT,
         meta_total INTEGER NOT NULL CHECK (meta_total > 0),
         responsable TEXT NOT NULL,
-        efecto_esperado TEXT,
-        -- Clave única para evitar duplicados (sin usar la zona como clave)
-        UNIQUE (indole, actividad_estrategica, indicador, meta_total, responsable)
+        efecto_esperado TEXT
     );
     CREATE TABLE IF NOT EXISTS avances (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -232,57 +236,80 @@ def init_db():
         FOREIGN KEY(plan_id) REFERENCES planes(id) ON DELETE CASCADE
     );
     """)
-    # sembrar si está vacío
-    cur = c.cursor()
+    conn.commit()
+
+    # 2) Migra columnas faltantes en 'planes'
+    cols_needed = {
+        "indole": "TEXT",
+        "actividad_estrategica": "TEXT",
+        "zona_trabajo": "TEXT",
+        "actores": "TEXT",
+        "indicador": "TEXT",
+        "consideraciones": "TEXT",
+        "periodicidad": "TEXT",
+        "meta_total": "INTEGER",
+        "responsable": "TEXT",
+        "efecto_esperado": "TEXT",
+    }
+    for col, typ in cols_needed.items():
+        if not table_has_column(conn, "planes", col):
+            conn.execute(f"ALTER TABLE planes ADD COLUMN {col} {typ};")
+    conn.commit()
+    conn.close()
+
+def seed_if_empty():
+    conn = get_conn()
+    cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM planes;")
     if cur.fetchone()[0] == 0:
         cur.executemany("""
-            INSERT OR IGNORE INTO planes
+            INSERT INTO planes
             (indole, actividad_estrategica, zona_trabajo, actores, indicador, consideraciones, periodicidad, meta_total, responsable, efecto_esperado)
             VALUES (:indole, :actividad_estrategica, :zona_trabajo, :actores, :indicador, :consideraciones, :periodicidad, :meta_total, :responsable, :efecto_esperado)
         """, SEED_PLANES)
-        c.commit()
-    c.close()
+        conn.commit()
+    conn.close()
 
-init_db()
+ensure_schema()
+seed_if_empty()
 
 # ===================== Helpers =====================
 def get_planes():
-    c = conn()
+    conn = get_conn()
     df = pd.read_sql_query(
-        "SELECT id, indole, indicador, meta_total, responsable, zona_trabajo FROM planes ORDER BY id", c
+        "SELECT id, indole, indicador, meta_total, responsable, zona_trabajo FROM planes ORDER BY id", conn
     )
-    c.close()
+    conn.close()
     return df
 
 def get_plan(plan_id: int):
-    c = conn()
-    df = pd.read_sql_query("SELECT * FROM planes WHERE id = ?", c, params=(plan_id,))
-    c.close()
+    conn = get_conn()
+    df = pd.read_sql_query("SELECT * FROM planes WHERE id = ?", conn, params=(plan_id,))
+    conn.close()
     return df.iloc[0]
 
 def get_acumulado(plan_id: int) -> int:
-    c = conn()
-    df = pd.read_sql_query("SELECT SUM(cantidad) AS s FROM avances WHERE plan_id = ?", c, params=(plan_id,))
-    c.close()
-    return int(df.s.fillna(0).iloc[0])
+    conn = get_conn()
+    df = pd.read_sql_query("SELECT COALESCE(SUM(cantidad),0) AS s FROM avances WHERE plan_id = ?", conn, params=(plan_id,))
+    conn.close()
+    return int(df.s.iloc[0])
 
 def add_avance(plan_id: int, cantidad: int, fecha: date, obs: str, user: str):
-    c = conn()
-    c.execute(
+    conn = get_conn()
+    conn.execute(
         "INSERT INTO avances (plan_id, cantidad, fecha, observaciones, registrado_por) VALUES (?,?,?,?,?)",
         (plan_id, int(cantidad), str(fecha), (obs or None), (user or None)),
     )
-    c.commit()
-    c.close()
+    conn.commit()
+    conn.close()
 
 def get_historial(plan_id: int):
-    c = conn()
+    conn = get_conn()
     df = pd.read_sql_query(
         "SELECT fecha, cantidad, registrado_por AS usuario, observaciones FROM avances WHERE plan_id = ? ORDER BY id DESC",
-        c, params=(plan_id,),
+        conn, params=(plan_id,),
     )
-    c.close()
+    conn.close()
     return df
 
 # ===================== UI =====================
@@ -290,10 +317,10 @@ st.title("📋 Registro de avances")
 
 df_planes = get_planes()
 if df_planes.empty:
-    st.error("No se cargaron los planes. Avísame y los pego de nuevo.")
+    st.error("No se cargaron los planes. Si persiste, borra 'actividades.db' y recarga.")
     st.stop()
 
-# Tabla compacta (1 fila = 1 plan)
+# Tabla compacta
 st.markdown("### 📑 Planes disponibles")
 st.dataframe(
     df_planes.rename(columns={
