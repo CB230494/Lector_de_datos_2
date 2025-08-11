@@ -1,305 +1,149 @@
-# app_dashboard_plan_policial.py
+# app.py  — Registro de avances (SQLite)
 import streamlit as st
 import pandas as pd
-import numpy as np
-import io, re, textwrap
-import matplotlib.pyplot as plt
-import matplotlib.patheffects as pe
-from matplotlib.ticker import MaxNLocator
+import sqlite3
+from datetime import date
 
-st.set_page_config(page_title="Plan Policial – Dashboard", layout="wide")
+st.set_page_config(page_title="Seguimiento de Actividades", layout="wide")
 
-# ---------------- estilos ----------------
-COLOR_ROJO = "#D32F2F"
-COLOR_AZUL = "#1565C0"
-PALETA = [
-    "#1565C0", "#D32F2F", "#2E7D32", "#F9A825", "#6A1B9A",
-    "#00838F", "#5D4037", "#C51162", "#455A64", "#7CB342"
-]  # responsables: colores distintos
-SOMBRA = [pe.withSimplePatchShadow(offset=(2,-2), shadow_rgbFace=(0,0,0), alpha=0.25, rho=0.98)]
+DB_PATH = "actividades.db"
 
-def save_png(fig):
-    buf = io.BytesIO(); fig.savefig(buf, format="png", bbox_inches="tight", dpi=170); buf.seek(0); return buf
-def nonempty(s: pd.Series):
-    return (s.dropna().map(lambda x: str(x).strip()).replace("", np.nan).dropna())
-def wrap(labels, w=20): return ["\n".join(textwrap.wrap(str(x), width=w)) for x in labels]
+# ========== DB ==========
+def get_connection():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
 
-# ---------------- normalizadores ----------------
-PERI_MAP = {
-    "diario":"Diario","diaria":"Diario","semanal":"Semanal","quincenal":"Quincenal",
-    "mensual":"Mensual","bimestral":"Bimestral","trimestral":"Trimestral",
-    "semestral":"Semestral","anual":"Anual"
-}
-def norm_peri(x):
-    if pd.isna(x): return np.nan
-    k = str(x).strip().lower(); return PERI_MAP.get(k, str(x).strip().title())
+def init_db():
+    conn = get_connection()
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS planes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sector TEXT NOT NULL,
+        indole TEXT NOT NULL,
+        actividad_estrategica TEXT NOT NULL,
+        indicador TEXT NOT NULL,
+        meta_total INTEGER NOT NULL CHECK (meta_total > 0),
+        responsable TEXT NOT NULL,
+        actores TEXT NOT NULL,
+        zona_trabajo TEXT NOT NULL,
+        fecha_inicio TEXT,
+        fecha_fin TEXT
+    );
 
-SEP_ZONAS = re.compile(r"\s*,\s*|\s+y\s+", flags=re.IGNORECASE)
-def tokenizar_zonas_unicas(valor):
-    if pd.isna(valor): return []
-    partes = [p.strip() for p in SEP_ZONAS.split(str(valor)) if p and p.strip()]
-    return sorted(set(re.sub(r"\s{2,}"," ",p) for p in partes))
+    CREATE TABLE IF NOT EXISTS avances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plan_id INTEGER NOT NULL,
+        cantidad INTEGER NOT NULL CHECK (cantidad > 0),
+        fecha TEXT,
+        observaciones TEXT,
+        registrado_por TEXT,
+        FOREIGN KEY(plan_id) REFERENCES planes(id) ON DELETE CASCADE
+    );
+    """)
+    conn.commit()
+    conn.close()
 
-# ---------------- lectura ----------------
-st.title("📊 Plan Policial – Dashboard (ajustado)")
-archivo = st.file_uploader("📁 Sube el Excel", type=["xlsx","xlsm"])
-if not archivo:
-    st.info("Sube el archivo para iniciar."); st.stop()
-xls = pd.ExcelFile(archivo)
-hoja = "Plan Policial" if "Plan Policial" in xls.sheet_names else xls.sheet_names[0]
-df = pd.read_excel(xls, sheet_name=hoja)
-st.success(f"✅ Hoja: **{hoja}** – {df.shape[0]} filas × {df.shape[1]} columnas")
+init_db()
 
-# ---------------- columnas ----------------
-COL_INDOLE = "Índole"                   # si no existe tomaremos columna B
-COL_ZONA   = "Zona(s)de trabajo"
-COL_RESP   = "Responsable"
-COL_META   = "Meta cuantitativa"
-COL_PERI   = "Peridiocidad"
-
-# limpieza mínima
-df = df.copy()
-df["Meta_q"] = pd.to_numeric(df.get(COL_META), errors="coerce")
-if COL_PERI in df: df["Peri_norm"] = df[COL_PERI].map(norm_peri)
-
-# ======== GRAFICO 1 (principal): Donut por Responsable ========
-st.header("1) Meta cuantitativa por responsable (donut)")
-df_mr = df.loc[df["Meta_q"].notna() & df[COL_RESP].notna(), [COL_RESP,"Meta_q"]]
-if df_mr.empty:
-    st.info("No hay datos de Meta y Responsable.")
-else:
-    resumen = df_mr.groupby(COL_RESP)["Meta_q"].sum().sort_values(ascending=False)
-    labels = list(resumen.index.astype(str))
-    values = list(resumen.values)
-    total = int(np.nansum(values))
-
-    fig, ax = plt.subplots(figsize=(9,6), constrained_layout=True)
-    colors = [PALETA[i % len(PALETA)] for i in range(len(labels))]
-    wedges, _, _ = ax.pie(
-        values, startangle=90, pctdistance=0.78,
-        autopct=lambda p: f"{p:.1f}%\n({int(round(p*total/100.0))})",
-        colors=colors
-    )
-    for w in wedges: w.set_path_effects([pe.withStroke(linewidth=2, foreground="white", alpha=0.8)])
-    ax.add_artist(plt.Circle((0,0),0.55,fc="white"))
-    ax.set_title("Distribución de la meta cuantitativa por responsable")
-    ax.legend(wedges, wrap(labels, 30), title="Responsable", loc="center left", bbox_to_anchor=(1, 0.5))
-    st.pyplot(fig)
-    st.download_button("🖼️ Descargar PNG", data=save_png(fig), file_name="donut_meta_responsable.png", mime="image/png")
-
-    top_name = labels[0]; top_val = int(values[0]); top_pct = round(top_val/total*100,1) if total>0 else 0
-    st.markdown(
-        f"**Resumen:** el responsable con mayor carga es **{top_name}** con **{top_val}** unidades "
-        f"({top_pct}% del total). El **total de la meta** asciende a **{total}**. "
-        "Este gráfico explica cómo se reparte la meta y justifica la priorización de seguimiento."
-    )
-
-st.markdown("---")
-
-# ======== GRAFICO 2: Índole (solo 3 categorías) ========
-st.header("2) Índole (Operativo, Preventivo, Gestión administrativa)")
-serie_indole = df[COL_INDOLE] if COL_INDOLE in df.columns else (df.iloc[:,1] if df.shape[1]>1 else pd.Series(dtype=object))
-MAP_INDOLE = {
-    "operativo":"Operativo",
-    "preventivo":"Preventivo",
-    "gestión administrativa":"Gestión administrativa",
-    "gestion administrativa":"Gestión administrativa",
-}
-def map_indole(v):
-    if pd.isna(v): return np.nan
-    k = str(v).strip().lower()
-    for kk, vv in MAP_INDOLE.items():
-        if kk in k: return vv
-    if str(v).strip() in MAP_INDOLE.values(): return str(v).strip()
-    return np.nan  # ignora otros textos largos
-
-ind_clas = serie_indole.map(map_indole).dropna()
-if ind_clas.empty:
-    st.info("No hay valores de Índole válidos (Operativo/Preventivo/Gestión administrativa).")
-else:
-    counts = ind_clas.value_counts()[["Operativo","Preventivo","Gestión administrativa"]].fillna(0).astype(int)
-    fig2, ax = plt.subplots(figsize=(7.5,4.6), constrained_layout=True)
-    colors = [COLOR_ROJO, COLOR_AZUL, "#2E7D32"]
-    bars = ax.bar(counts.index, counts.values, color=colors, alpha=0.95)
-    for b in bars:
-        b.set_path_effects(SOMBRA)
-        ax.text(b.get_x()+b.get_width()/2, b.get_height(), f"{int(b.get_height())}", ha="center", va="bottom",
-                path_effects=[pe.withStroke(linewidth=3, foreground="white")])
-    ax.set_title("Índole – conteo real (solo 3 categorías)")
-    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    ax.grid(axis="y", alpha=0.25)
-    st.pyplot(fig2)
-    st.download_button("🖼️ Descargar PNG", data=save_png(fig2), file_name="indole_3categorias.png", mime="image/png")
-    st.markdown(
-        "**Lectura:** predomina la índole **Operativo/Preventivo** frente a **Gestión administrativa**. "
-        "Esto orienta el tipo de intervención prioritaria y la logística requerida."
-    )
-
-st.markdown("---")
-
-# ======== (Opcional) GRAFICO 3: Zonas tokenizadas ========
-with st.expander("3) Zonas de trabajo (si deseas mostrarlo)"):
-    if "Zona(s)de trabajo" in df.columns:
-        zonas_tokens = df["Zona(s)de trabajo"].dropna().apply(tokenizar_zonas_unicas)
-        tokens = [z for zs in zonas_tokens for z in zs if z]
-        zonas_sr = nonempty(pd.Series(tokens, dtype=object))
-        if not zonas_sr.empty:
-            counts_z = zonas_sr.value_counts().astype(int)
-            topZ = st.slider("Top zonas", 5, max(5, min(30, len(counts_z))), min(10, len(counts_z)))
-            figZ, ax = plt.subplots(figsize=(9,5), constrained_layout=True)
-            sub = counts_z.head(topZ)
-            bars = ax.bar(wrap(sub.index, 22), sub.values, color=COLOR_AZUL, alpha=0.95)
-            for b in bars:
-                b.set_path_effects(SOMBRA)
-                ax.text(b.get_x()+b.get_width()/2, b.get_height(), f"{int(b.get_height())}", ha="center", va="bottom",
-                        path_effects=[pe.withStroke(linewidth=3, foreground="white")])
-            ax.set_title("Zonas de trabajo (conteo entero)")
-            ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-            ax.grid(axis="y", alpha=0.25)
-            st.pyplot(figZ)
-            st.download_button("🖼️ Descargar PNG", data=save_png(figZ), file_name="zonas_trabajo.png", mime="image/png")
-            st.markdown("**Lectura:** cada mención suma 1 por zona; útil para priorización territorial.")
-        else:
-            st.info("No hay zonas válidas para contar.")
+# ===== Helpers =====
+def fetch_planes(sector=None):
+    conn = get_connection()
+    if sector and sector != "Todos":
+        df = pd.read_sql_query("SELECT * FROM planes WHERE sector = ? ORDER BY id DESC", conn, params=(sector,))
     else:
-        st.info("No se encontró la columna 'Zona(s)de trabajo'.")
+        df = pd.read_sql_query("SELECT * FROM planes ORDER BY id DESC", conn)
+    conn.close()
+    return df
 
-st.markdown("---")
+def fetch_avance(plan_id: int) -> int:
+    conn = get_connection()
+    df = pd.read_sql_query("SELECT cantidad FROM avances WHERE plan_id = ?", conn, params=(plan_id,))
+    conn.close()
+    return int(df["cantidad"].sum()) if not df.empty else 0
 
-# ===================== INFORME CUALITATIVO (con tus textos) =====================
-st.header("Informe cualitativo (resumen editable)")
-st.caption("Solo se muestran bloques con contenido (se omiten NA o vacíos).")
+def insertar_avance(plan_id: int, cantidad: int, fecha_reg: date, obs: str, usuario: str):
+    conn = get_connection()
+    conn.execute("""
+        INSERT INTO avances (plan_id, cantidad, fecha, observaciones, registrado_por)
+        VALUES (?, ?, ?, ?, ?)
+    """, (plan_id, int(cantidad), str(fecha_reg), (obs or None), (usuario or None)))
+    conn.commit()
+    conn.close()
 
-# --- Actividad estratégica (lista) ---
-st.subheader("Actividad estratégica")
-txt_actividad = st.text_area("Pega/edita las actividades estratégicas (una por línea):", value="""Coordinación y ejecución de operativos interinstitucionales nocturnos con enfoque en objetivos estratégicos dentro del área de intervención.
-Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.
-Gestión institucional mediante oficio para la asignación de recurso humano y transporte policial necesario para garantizar la cobertura operativa diaria en zonas de interés.
-Ejecución de actividades cívico-policiales en espacios públicos y centros educativos, orientadas a fortalecer los vínculos comunitarios, promover la cultura de paz y fomentar la convivencia ciudadana desde un enfoque preventivo.
-Despliegue de operativos presenciales en horarios mixtos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.
-Desarrollo de operativos interinstitucionales de control dirigidos a la regulación de ventas informales y actividades no autorizadas de cobro de parqueo en la zona costera.
-Implementación de acciones preventivas, lideradas por programas policiales, orientadas a la recuperación y apropiación positiva de espacios públicos.
-Ejecución de talleres y jornadas de sensibilización en seguridad comercial, dirigidas a fortalecer las capacidades preventivas del sector empresarial y comercial.
-Ejecución de operativos policiales focalizados para el abordaje e identificación de personas y vehículos vinculados a delitos de robo en viviendas, con base en análisis previo de información e inteligencia policial.
-Capacitaciones en Seguridad Comunitaria, dirigidas a residentes extranjeros angloparlantes, con el fin de fortalecer su integración y participación en los esfuerzos preventivos locales.""")
-acts = [a.strip() for a in txt_actividad.split("\n") if a.strip() and a.strip().upper()!="NA"]
-if acts:
-    st.markdown("\n".join([f"- {a}" for a in acts]))
+# ===== UI =====
+st.title("📋 Registro de avances de actividades")
 
-# --- Actores – Indicador – Consideraciones (tabla) ---
-st.subheader("Actores involucrados / Indicador / Consideraciones")
+# opciones de sector tomadas de la DB
+conn = get_connection()
+sectores_db = pd.read_sql_query("SELECT DISTINCT sector FROM planes ORDER BY sector", conn)
+conn.close()
+sectores = ["Todos"] + sectores_db["sector"].tolist()
 
-txt_tabla = st.text_area(
-    "Pega la tabla (3 columnas separadas por ';' o TAB; las Consideraciones pueden llevar varias líneas numeradas):",
-    value="""Fuerza Pública|Policía de Tránsito|Policía de Migración|Policía Turística|DIAC;Cantidad de operativos policiales;1-Es necesario reforzar el personal del DIAC para esclarecer los objetivos a intervenir durante los operativos.
-2-Se requiere la presencia de la unidad de policía canina.
-3-La ubicación de los operativos debe ser aleatoria, según análisis previo de la zona.
-4-Los operativos deben ser fugaces, con una duración máxima de 40 minutos por zona.
-Fuerza Pública;Cantidad de operativos policiales;1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de ejecución, con el fin de garantizar la efectividad de la acción policial.
-2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura operativa adecuada y fortalecer la intervención en campo.
-Fuerza Pública;Cantidad de oficios emitidos;
-Fuerza Pública;Cantidad de cívicos policiales;NA
-Fuerza Pública;Cantidad de operativos policiales;1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de ejecución, con el fin de garantizar la efectividad de la acción policial.
-2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura operativa adecuada y fortalecer la intervención en campo.
-Fuerza Pública|Policía de Tránsito|Policía de Migración|Policía Turística|DIAC;Cantidad de operativos policiales;NA
-Fuerza Pública;Cantidad de acciones preventivas;NA
-Fuerza Pública;Cantidad de talleres;NA
-Fuerza Pública;Cantidad de operativos policiales;NA
-Fuerza Pública;Cantidad de capacitaciones;NA"""
+colA, colB = st.columns([1, 3])
+sector = colA.selectbox("Sector", sectores, index=sectores.index("Santa Teresa") if "Santa Teresa" in sectores else 0)
+
+df_planes = fetch_planes(None if sector == "Todos" else sector)
+if df_planes.empty:
+    st.info("No hay planes creados para este filtro.")
+    st.stop()
+
+df_planes["label"] = df_planes.apply(
+    lambda r: f"[{r['sector']}] {r['indicador']} • Meta {r['meta_total']} • Resp. {r['responsable']}",
+    axis=1
 )
+plan_sel = colB.selectbox("Plan disponible", df_planes["label"].tolist())
+plan = df_planes.loc[df_planes["label"] == plan_sel].iloc[0]
 
-rows = []
-last = None
-for raw in txt_tabla.splitlines():
-    line = raw.strip()
-    if not line:
-        continue
+# Resumen del plan
+acumulado = fetch_avance(int(plan["id"]))
+meta = int(plan["meta_total"])
+porcentaje = min(100, round((acumulado * 100.0) / meta, 2)) if meta else 0
 
-    # Si NO hay separadores y parece una viñeta numerada -> anexar a la fila anterior (Consideraciones)
-    if (";" not in line and "\t" not in line) and re.match(r"^(\d+[\-\.)]|[-•–])\s*", line):
-        if last is not None:
-            last["Consideraciones"] = (last["Consideraciones"] + ("\n" if last["Consideraciones"] else "") + line)
-        continue
+st.markdown("### 📌 Detalle del plan")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Meta total", meta)
+c2.metric("Acumulado", acumulado)
+c3.metric("Restante", max(0, meta - acumulado))
+c4.metric("% Avance", f"{porcentaje}%")
+st.progress(int(porcentaje))
 
-    # Partir en 3 columnas (Actores;Indicador;Consideraciones)
-    parts = re.split(r";|\t", line, maxsplit=2)
-    parts += [""] * (3 - len(parts))
-    actores, indicador, consid = [p.strip() for p in parts]
+with st.expander("Ver más detalles"):
+    st.write({
+        "Índole": plan["indole"],
+        "Actividad estratégica": plan["actividad_estrategica"],
+        "Indicador": plan["indicador"],
+        "Responsable": plan["responsable"],
+        "Actores": plan["actores"],
+        "Zona(s) de trabajo": plan["zona_trabajo"],
+        "Periodo": f"{plan['fecha_inicio'] or ''} - {plan['fecha_fin'] or ''}",
+    })
 
-    # normalizar: pipes como comas
-    actores = actores.replace("|", ", ")
+# Registrar avance
+st.markdown("### ➕ Registrar avance")
+col1, col2, col3 = st.columns([1, 1, 2])
+cantidad = col1.number_input("Cantidad realizada", min_value=1, value=1, step=1)
+fecha_reg = col2.date_input("Fecha", value=date.today())
+usuario = col3.text_input("Registrado por (opcional)")
+obs = st.text_area("Observaciones (opcional)")
 
-    # Consideraciones "NA" -> vacío
-    if consid.upper() == "NA":
-        consid = ""
+if st.button("Guardar avance", type="primary"):
+    try:
+        insertar_avance(int(plan["id"]), cantidad, fecha_reg, obs, usuario)
+        st.success("Avance registrado ✅")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error al guardar: {e}")
 
-    row = {"Actores": actores, "Indicador": indicador, "Consideraciones": consid}
-    rows.append(row)
-    last = row
+# Historial
+st.markdown("### 🧾 Historial reciente")
+conn = get_connection()
+hist = pd.read_sql_query(
+    "SELECT fecha, cantidad, registrado_por AS usuario, observaciones FROM avances WHERE plan_id = ? ORDER BY id DESC LIMIT 50",
+    conn, params=(int(plan["id"]),)
+)
+conn.close()
+st.dataframe(hist, use_container_width=True)
 
-# limpiar filas totalmente vacías
-tabla = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Actores","Indicador","Consideraciones"])
-if not tabla.empty:
-    mask_keep = tabla[["Actores","Indicador","Consideraciones"]].apply(lambda s: s.astype(str).str.strip().astype(bool)).any(axis=1)
-    tabla = tabla[mask_keep].reset_index(drop=True)
-st.dataframe(tabla, use_container_width=True)
-
-# --- Efecto esperado (lista) ---
-st.subheader("Efecto esperado")
-txt_efecto = st.text_area("Pega/edita efectos (uno por línea):", value="""Reducción de actividades ilícitas y fortalecimiento de la presencia institucional en horarios de mayor riesgo.
-Aumento de la percepción policial en puntos críticos mediante presencia policial visible.
-Asegurar una presencia policial continua y eficaz en las zonas priorizadas, mediante la dotación oportuna del personal y los medios logísticos requeridos.
-Fortalecer el vínculo entre la comunidad y la Fuerza Pública, promoviendo una cultura de paz, prevención y convivencia por medio de la interacción positiva en espacios públicos y centros educativos.
-Recuperar el orden en el espacio público, reducir la informalidad y garantizar condiciones más seguras y reguladas para residentes, turistas y comercios formales.
-Transformar los espacios públicos en entornos seguros y activos, fomentando su uso positivo por parte de la comunidad y reduciendo su vulnerabilidad ante actividades delictivas
-Mejorar la percepción de seguridad y fortalecer la capacidad de prevención del delito en el sector comercial, mediante la adopción de buenas prácticas y la articulación con la Fuerza Pública.
-Reducir la incidencia de robos a viviendas mediante la identificación oportuna de objetivos vinculados, así como el fortalecimiento de la capacidad de respuesta y disuasión policial en zonas residenciales vulnerables.
-Mejorar el nivel de conocimiento y la capacidad de respuesta de la población extranjera residente, promoviendo su vinculación con las estrategias de seguridad comunitaria y fortaleciendo la cohesión social.""")
-efectos = [e.strip() for e in txt_efecto.split("\n") if e.strip() and e.strip().upper()!="NA"]
-if efectos: st.markdown("\n".join([f"- {e}" for e in efectos]))
-
-# --- Actividades en desarrollo (tabla) ---
-st.subheader("Actividades en desarrollo – Dirección Regional de Chorotega")
-txt_desarrollo = st.text_area("Pega/edita lista numerada (una por línea):", value="""1. Reunión cerrada con personal de crimen organizado y Fiscalía de Santa Cruz, DIAC y GAO.
-2. Creación de un chat de coordinación interinstitucional para operativos.
-3. Planificación de operativos en la zona, en conjunto con transito, OIJ, Migración, GAO, Fiscalía, Unidad Canina y Policía Turística.
-4. Georreferenciación de los puntos de venta de drogas y viviendas de los lideres de las organizaciones.
-5. Fotografiar los vehículos en que se movilizan las estructuras criminales, así como la reseña de los mismos.
-6. Facilitar los insumos al OIJ y Fiscalía con el fin de poder llevar a cabo los allanamientos correspondientes en la zona.
-7. Crear una base de datos compartida entre OIJ, Policía Turística, Fiscalía y GAO.
-8. Realizar reuniones quincenales de orden cerrado con el fin de definir los objetivos de mas interés e intercambiar información""")
-items = [re.sub(r"^\s*\d+[\).]?\s*","",x).strip() for x in txt_desarrollo.splitlines() if x.strip()]
-if items:
-    st.dataframe(pd.DataFrame({"#": range(1,len(items)+1), "Actividad": items}), use_container_width=True)
-
-# --- Notas Operativo / Preventivo (opcional) ---
-with st.expander("Notas operativas y preventivas (opcional)"):
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Operativo**")
-        st.text_area("Pega aquí las notas de OPERATIVO (una por línea)", value="""GAO, Turistica, OIJ, Policía Municipal, Transito
-Reseña a sujetos, identidad y modalidad
-600 espacios para decomiso de motos
-Impacto visual
-Reventaron los bunker de Brasilito y Dylan Manuel Morales Méndez se fue del lugar; sin embargo ahora esta Marenco.
-El recorrido se hace planificado, con grupos de trabajos que se vieran más y más efectivos
-Se quiere intensificar a tres operaciones por semana, actualemnte son 2
-decomiso con AK47 y se genera un vínculo con la estructura del Diablo
-Deportación de Colombianos dedicados a la venta de droga; estrategia efectiva en vez de la judialización
-Se han identificado a 4 oficiales involucrados con el crimen organizado como choferes, brindar información, entre otros.
-Se estan planificando 2 allanamientos más para la estructura de Marenco
-Hay una movilización de vivienda a miembros de la estructura criminal
-Detención de unos sujetos y un vehículo relacionados a asaltos en locales comerciales (Villareal, Tempate, 27 de abril)
-Existe una disputa entre la banda de Marenco y la de "W", la banda de los Colombianos de unió al de Marenco
-Una operación con resultado de 7 personas con orden de captura""", height=220)
-    with col2:
-        st.markdown("**Preventivo**")
-        st.text_area("Pega aquí las notas de PREVENTIVO (una por línea)", value="""Capacitaciones a la comunidad de Pinilla en seguridad comunitaria en Inglés
-Brasilito seguimiento a las comunidades en conjunto de la policía Turística
-Acciones preventivas comunales involucrados para mejorar la imagen de Fuerza Pública y acercamiento comunitario
-Se presenta una planificación de los 4 meses que faltan del año en Villareal, Brasilito, Surfside y Potrero
-Iniciaron en Julio las Ligas Atleticas en Brasilito""", height=220)
-
-st.caption("🎨 Gráficos: rojo/azul con sombra. Donut con colores únicos por responsable. Índole limitada a 3 categorías. La tabla de Actores/Indicador/Consideraciones ya no se cruza: las viñetas numeradas se anexan a la fila correcta y se omiten 'NA'.")
 
 
