@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-st.subheader("📈 Avances por meta (10 filas)")
+st.subheader("📈 Avances por meta")
 
 # Metas según la tabla de tu imagen
 metas = [
@@ -59,5 +59,6 @@ st.download_button(
     file_name="avance_por_meta.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
