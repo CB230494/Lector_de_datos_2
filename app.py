@@ -19,10 +19,16 @@ def save_png(fig):
     buf.seek(0)
     return buf
 
+def nonempty(series):
+    """Solo valores existentes (no NaN, no cadenas vacías/espacios)."""
+    return (series.dropna()
+                  .map(lambda x: str(x).strip())
+                  .replace("", np.nan)
+                  .dropna())
+
 # ======== LECTURA ========
 st.title("📊 Dashboard – Plan Policial")
 archivo = st.file_uploader("📁 Sube el Excel 'Plan de Policial.xlsx'", type=["xlsx","xlsm"])
-
 if not archivo:
     st.info("Sube el archivo para iniciar.")
     st.stop()
@@ -38,55 +44,39 @@ except Exception as e:
 st.success(f"✅ Hoja leída: **{hoja}** – {df.shape[0]} filas × {df.shape[1]} columnas")
 
 # ======== CAMPOS ESPERADOS ========
-COL_NUM = "#"
 COL_INDOLE = "Índole"
 COL_ACTIVIDAD = "Actividad estratégica"
 COL_ZONA = "Zona(s)de trabajo"
-COL_ACTORES = "Actores involucrados"
-COL_INDICADOR = "Indicador de actividad"
-COL_CONSID = "Consideraciones"
-COL_PERIOD = "Peridiocidad"  # viene así
-COL_META = "Meta cuantitativa"
 COL_RESP = "Responsable"
-COL_EFECTO = "Efecto esperado"
-# Actualiza esta fecha si cambia el nombre de la columna de resultados
-COL_RESULT = [c for c in df.columns if str(c).lower().startswith("resultados ")]
+COL_META = "Meta cuantitativa"
 
-if not COL_RESULT:
-    st.warning("No encontré la columna de resultados (ej. 'Resultados 6 de ago 2025'). Puedes editar abajo para elegirla.")
-    COL_RESULT = st.selectbox("Selecciona la columna de resultados", df.columns.tolist())
+# detecta columna de resultados tipo "Resultados ..."
+cand_result = [c for c in df.columns if str(c).lower().startswith("resultados ")]
+if cand_result:
+    COL_RESULT = st.selectbox("Columna de resultados", cand_result, index=0)
 else:
-    # si hay varias "Resultados X", toma la primera por defecto pero permite elegir
-    COL_RESULT = st.selectbox("Columna de resultados", COL_RESULT)
+    COL_RESULT = st.selectbox("Selecciona la columna de resultados", df.columns.tolist())
 
-# ======== LIMPIEZA BÁSICA ========
-for c in [COL_META, COL_RESULT]:
-    if c in df.columns:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
+# ======== LIMPIEZA NUMÉRICA Y TEXTO ========
+df = df.copy()
 
-df["Meta_q"] = df.get(COL_META, np.nan)
-df["Resultado"] = df.get(COL_RESULT, np.nan)
-df["Avance_%"] = np.where(df["Meta_q"] > 0, (df["Resultado"] / df["Meta_q"]) * 100, np.nan)
+# Convierte metas/resultados a numérico y respeta solo los que existan
+df["Meta_q"] = pd.to_numeric(df.get(COL_META), errors="coerce")
+df["Resultado"] = pd.to_numeric(df.get(COL_RESULT), errors="coerce")
 
-# ======== KPIs ========
-total_acciones = len(df)
-meta_total = df["Meta_q"].sum(skipna=True) if "Meta_q" in df.columns else np.nan
-resultado_total = df["Resultado"].sum(skipna=True) if "Resultado" in df.columns else np.nan
-avance_global = (resultado_total / meta_total * 100) if (meta_total and meta_total > 0) else np.nan
+# Crea avance solo cuando hay ambos datos y meta>0
+mask_avance = df["Meta_q"].notna() & (df["Meta_q"] > 0) & df["Resultado"].notna()
+df.loc[mask_avance, "Avance_%"] = (df.loc[mask_avance, "Resultado"] / df.loc[mask_avance, "Meta_q"]) * 100
 
-colA, colB, colC, colD = st.columns(4)
-colA.metric("Acciones totales", f"{total_acciones:,}")
-colB.metric("Meta total", f"{(meta_total or 0):,.0f}")
-colC.metric("Resultado total", f"{(resultado_total or 0):,.0f}")
-colD.metric("Avance global", f"{avance_global:,.1f}%" if not pd.isna(avance_global) else "—")
-
-st.markdown("---")
-
-# ======== FILTROS ========
+# ======== FILTROS (solo valores existentes) ========
 with st.expander("🎛️ Filtros"):
-    f_indole = st.multiselect("Índole", sorted(df[COL_INDOLE].dropna().unique()) if COL_INDOLE in df else [], [])
-    f_resp = st.multiselect("Responsable", sorted(df[COL_RESP].dropna().unique()) if COL_RESP in df else [], [])
-    f_zona = st.multiselect("Zona(s) de trabajo", sorted(df[COL_ZONA].dropna().unique()) if COL_ZONA in df else [], [])
+    vals_indole = sorted(nonempty(df.get(COL_INDOLE, pd.Series(dtype=object))).unique()) if COL_INDOLE in df else []
+    vals_resp   = sorted(nonempty(df.get(COL_RESP, pd.Series(dtype=object))).unique()) if COL_RESP in df else []
+    vals_zona   = sorted(nonempty(df.get(COL_ZONA, pd.Series(dtype=object))).unique()) if COL_ZONA in df else []
+
+    f_indole = st.multiselect("Índole", vals_indole, [])
+    f_resp   = st.multiselect("Responsable", vals_resp, [])
+    f_zona   = st.multiselect("Zona(s) de trabajo", vals_zona, [])
 
 df_f = df.copy()
 if f_indole:
@@ -97,9 +87,22 @@ if f_zona:
     df_f = df_f[df_f[COL_ZONA].isin(f_zona)]
 
 st.caption(f"Datos filtrados: {len(df_f)} filas.")
-
 with st.expander("👀 Ver tabla filtrada"):
     st.dataframe(df_f, use_container_width=True, height=360)
+
+# ======== KPIs (solo cuentan celdas con datos reales) ========
+total_acciones = len(df_f)
+meta_total = df_f["Meta_q"].dropna().sum()
+resultado_total = df_f["Resultado"].dropna().sum()
+avance_global = (resultado_total / meta_total * 100) if (meta_total > 0 and not np.isnan(meta_total)) else np.nan
+
+colA, colB, colC, colD = st.columns(4)
+colA.metric("Acciones (filtradas)", f"{total_acciones:,}")
+colB.metric("Meta total (solo celdas con dato)", f"{meta_total:,.0f}")
+colC.metric("Resultado total (solo celdas con dato)", f"{resultado_total:,.0f}")
+colD.metric("Avance global", f"{avance_global:,.1f}%" if pd.notna(avance_global) else "—")
+
+st.markdown("---")
 
 # ======== GRÁFICOS ========
 def barras(series, titulo, usar_rojo=True):
@@ -117,16 +120,16 @@ def barras(series, titulo, usar_rojo=True):
     plt.xticks(rotation=20, ha="right")
     return fig
 
-def barras_sumatoria(df_sum, titulo, usar_rojo=False):
+def barras_sumatoria(serie_sumas, titulo, usar_rojo=False):
     fig, ax = plt.subplots(figsize=(8.6, 4.8), constrained_layout=True)
     color = COLOR_AZUL if not usar_rojo else COLOR_ROJO
-    df_sum = df_sum.sort_values(ascending=False)
-    bars = ax.bar(df_sum.index.astype(str), df_sum.values, color=color, alpha=0.92)
+    serie_sumas = serie_sumas.sort_values(ascending=False)
+    bars = ax.bar(serie_sumas.index.astype(str), serie_sumas.values, color=color, alpha=0.92)
     for b in bars:
         b.set_path_effects(SOMBRA)
     ax.set_title(titulo)
     ax.grid(axis="y", alpha=0.25)
-    for i, v in enumerate(df_sum.values):
+    for i, v in enumerate(serie_sumas.values):
         ax.text(i, v, f"{v:,.0f}", ha="center", va="bottom",
                 path_effects=[pe.withStroke(linewidth=3, foreground="white")])
     plt.xticks(rotation=20, ha="right")
@@ -138,84 +141,96 @@ def linea_avance(xcats, yvals, titulo):
     ln.set_path_effects([pe.withStroke(linewidth=4, foreground="black", alpha=0.2)])
     ax.fill_between(range(len(xcats)), yvals, alpha=0.15, color=COLOR_AZUL)
     ax.set_title(titulo)
-    ax.set_ylim(0, max(100, np.nanmax(yvals)*1.15 if len(yvals) else 100))
+    ymax = 100 if len(yvals) == 0 else max(100, float(np.nanmax(yvals)) * 1.15)
+    ax.set_ylim(0, ymax)
     ax.set_ylabel("%")
     ax.grid(True, alpha=0.3)
     plt.xticks(rotation=20, ha="right")
     return fig
 
-# 1) Distribución por Índole
-if COL_INDOLE in df_f:
-    counts_indole = df_f[COL_INDOLE].fillna("(sin dato)").value_counts()
-    st.subheader("Distribución por Índole")
-    fig1 = barras(counts_indole, "Acciones por Índole (conteo)", usar_rojo=False)
-    st.pyplot(fig1)
-    st.download_button("🖼️ Descargar PNG", data=save_png(fig1), file_name="indole_conteo.png", mime="image/png")
+# 1) Distribución por Índole (solo valores existentes)
+if COL_INDOLE in df_f.columns:
+    counts_indole = nonempty(df_f[COL_INDOLE]).value_counts()
+    if not counts_indole.empty:
+        st.subheader("Distribución por Índole (solo datos existentes)")
+        fig1 = barras(counts_indole, "Índole – Conteo real", usar_rojo=False)
+        st.pyplot(fig1)
+        st.download_button("🖼️ Descargar PNG", data=save_png(fig1), file_name="indole_conteo.png", mime="image/png")
 
 st.markdown("---")
 
-# 2) Meta y Resultado por Índole
-if COL_INDOLE in df_f and "Meta_q" in df_f and "Resultado" in df_f:
-    meta_por_indole = df_f.groupby(COL_INDOLE, dropna=False)["Meta_q"].sum()
-    res_por_indole = df_f.groupby(COL_INDOLE, dropna=False)["Resultado"].sum()
+# 2) Meta y Resultado por Índole (solo cuando existen)
+if COL_INDOLE in df_f.columns:
+    df_mr = df_f.loc[df_f["Meta_q"].notna() | df_f["Resultado"].notna(), [COL_INDOLE, "Meta_q", "Resultado"]].copy()
+    if not df_mr.empty:
+        meta_por_indole = df_mr.groupby(COL_INDOLE, dropna=True)["Meta_q"].sum(min_count=1).dropna()
+        res_por_indole  = df_mr.groupby(COL_INDOLE, dropna=True)["Resultado"].sum(min_count=1).dropna()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        fig2 = barras_sumatoria(meta_por_indole.fillna(0), "Meta cuantitativa por Índole (suma)", usar_rojo=True)
-        st.pyplot(fig2)
-        st.download_button("🖼️ Descargar PNG", data=save_png(fig2), file_name="meta_por_indole.png", mime="image/png")
-    with col2:
-        fig3 = barras_sumatoria(res_por_indole.fillna(0), "Resultado por Índole (suma)", usar_rojo=False)
-        st.pyplot(fig3)
-        st.download_button("🖼️ Descargar PNG", data=save_png(fig3), file_name="resultado_por_indole.png", mime="image/png")
+        col1, col2 = st.columns(2)
+        if not meta_por_indole.empty:
+            with col1:
+                fig2 = barras_sumatoria(meta_por_indole, "Meta cuantitativa por Índole (suma de celdas con dato)", usar_rojo=True)
+                st.pyplot(fig2)
+                st.download_button("🖼️ Descargar PNG", data=save_png(fig2), file_name="meta_por_indole.png", mime="image/png")
+        if not res_por_indole.empty:
+            with col2:
+                fig3 = barras_sumatoria(res_por_indole, "Resultado por Índole (suma de celdas con dato)", usar_rojo=False)
+                st.pyplot(fig3)
+                st.download_button("🖼️ Descargar PNG", data=save_png(fig3), file_name="resultado_por_indole.png", mime="image/png")
 
 st.markdown("---")
 
-# 3) Top actividades estratégicas
-if COL_ACTIVIDAD in df_f:
+# 3) Top actividades estratégicas (solo existentes)
+if COL_ACTIVIDAD in df_f.columns:
     top_k = st.slider("Top actividades estratégicas (por frecuencia)", 3, 20, 10)
-    top_acts = df_f[COL_ACTIVIDAD].fillna("(sin dato)").value_counts().head(top_k)
-    st.subheader("Top actividades estratégicas")
-    fig4 = barras(top_acts, f"Top {top_k} Actividades (conteo)", usar_rojo=True)
-    st.pyplot(fig4)
-    st.download_button("🖼️ Descargar PNG", data=save_png(fig4), file_name="top_actividades.png", mime="image/png")
+    top_acts = nonempty(df_f[COL_ACTIVIDAD]).value_counts().head(top_k)
+    if not top_acts.empty:
+        st.subheader("Top actividades estratégicas (conteo real)")
+        fig4 = barras(top_acts, f"Top {top_k} Actividades", usar_rojo=True)
+        st.pyplot(fig4)
+        st.download_button("🖼️ Descargar PNG", data=save_png(fig4), file_name="top_actividades.png", mime="image/png")
 
 st.markdown("---")
 
-# 4) Avance % por Responsable (cuando hay meta/resultado)
-if COL_RESP in df_f and df_f["Meta_q"].notna().any() and df_f["Resultado"].notna().any():
-    avances = df_f.groupby(COL_RESP, dropna=False).apply(
-        lambda x: (x["Resultado"].sum() / x["Meta_q"].sum() * 100) if x["Meta_q"].sum() > 0 else np.nan
-    ).dropna()
-    if not avances.empty:
-        st.subheader("Avance % por Responsable")
-        fig5 = linea_avance(list(avances.index.astype(str)), list(avances.values), "Porcentaje de avance por Responsable")
-        st.pyplot(fig5)
-        st.download_button("🖼️ Descargar PNG", data=save_png(fig5), file_name="avance_por_responsable.png", mime="image/png")
+# 4) Avance % por Responsable (solo responsables con datos de meta y resultado)
+if COL_RESP in df_f.columns:
+    df_resp = df_f.loc[df_f["Meta_q"].notna() & (df_f["Meta_q"] > 0) & df_f["Resultado"].notna(), [COL_RESP, "Meta_q", "Resultado"]]
+    if not df_resp.empty:
+        avances = (df_resp.groupby(COL_RESP)
+                         .apply(lambda x: (x["Resultado"].sum() / x["Meta_q"].sum() * 100)
+                                if x["Meta_q"].sum() > 0 else np.nan)
+                         .dropna())
+        if not avances.empty:
+            st.subheader("Avance % por Responsable (solo con datos presentes)")
+            fig5 = linea_avance(list(avances.index.astype(str)), list(avances.values),
+                                "Porcentaje de avance por Responsable")
+            st.pyplot(fig5)
+            st.download_button("🖼️ Descargar PNG", data=save_png(fig5), file_name="avance_por_responsable.png", mime="image/png")
 
 st.markdown("---")
 
-# 5) Distribución por Zona(s) de trabajo y Actores involucrados (opcional)
+# 5) Zonas y Responsables más frecuentes (solo existentes)
 colZ, colR = st.columns(2)
-if COL_ZONA in df_f:
-    counts_zona = df_f[COL_ZONA].fillna("(sin dato)").value_counts().head(12)
-    with colZ:
-        st.subheader("Zonas más mencionadas")
-        fig6 = barras(counts_zona, "Zonas de trabajo (conteo)", usar_rojo=False)
-        st.pyplot(fig6)
-        st.download_button("🖼️ Descargar PNG", data=save_png(fig6), file_name="zonas_conteo.png", mime="image/png")
-
-if COL_RESP in df_f:
-    counts_resp = df_f[COL_RESP].fillna("(sin dato)").value_counts().head(12)
-    with colR:
-        st.subheader("Responsables más frecuentes")
-        fig7 = barras(counts_resp, "Responsables (conteo)", usar_rojo=True)
-        st.pyplot(fig7)
-        st.download_button("🖼️ Descargar PNG", data=save_png(fig7), file_name="responsables_conteo.png", mime="image/png")
+if COL_ZONA in df_f.columns:
+    counts_zona = nonempty(df_f[COL_ZONA]).value_counts().head(12)
+    if not counts_zona.empty:
+        with colZ:
+            st.subheader("Zonas de trabajo (conteo real)")
+            fig6 = barras(counts_zona, "Zonas de trabajo", usar_rojo=False)
+            st.pyplot(fig6)
+            st.download_button("🖼️ Descargar PNG", data=save_png(fig6), file_name="zonas_conteo.png", mime="image/png")
+if COL_RESP in df_f.columns:
+    counts_resp = nonempty(df_f[COL_RESP]).value_counts().head(12)
+    if not counts_resp.empty:
+        with colR:
+            st.subheader("Responsables (conteo real)")
+            fig7 = barras(counts_resp, "Responsables", usar_rojo=True)
+            st.pyplot(fig7)
+            st.download_button("🖼️ Descargar PNG", data=save_png(fig7), file_name="responsables_conteo.png", mime="image/png")
 
 st.markdown("---")
 
-# ======== EXPORTAR ========
+# ======== EXPORTAR (solo lo filtrado) ========
 with st.expander("⬇️ Descargar datos filtrados"):
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as w:
@@ -224,8 +239,6 @@ with st.expander("⬇️ Descargar datos filtrados"):
                        file_name="plan_policial_filtrado.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-st.caption("🎨 Paleta: rojo #D32F2F / azul #1565C0 con sombra sutil.")
-
-
+st.caption("🎨 Solo se cuentan celdas con dato real. Paleta: rojo #D32F2F / azul #1565C0.")
 
 
