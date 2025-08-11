@@ -1,4 +1,4 @@
-# app.py  — Registro de avances (SQLite)
+# app.py — Usuarios: DB SQLite con planes precargados desde Excel (ya incrustados)
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -8,13 +8,228 @@ st.set_page_config(page_title="Seguimiento de Actividades", layout="wide")
 
 DB_PATH = "actividades.db"
 
+# ================== SEED: PLANES PRE-CARGADOS (extraídos de tu Excel) ==================
+SEED_PLANES = [
+ {'sector': 'Tamarindo',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Coordinación y ejecución de operativos interinstitucionales noc...oque en objetivos estratégicos dentro del área de intervención.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 24,
+  'responsable': 'Sub Director Regional',
+  'actores': 'Fuerza Pública\nPolicía de Tránsito\nPolicía de Migración\nPolicía Turística\nDIAC',
+  'zona_trabajo': 'Tamarindo, Villareal, Flamingo, Brasilito, Potrero y Surfside',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Tamarindo',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Tamarindo',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Tamarindo',
+  'indole': 'Gestión administrativa',
+  'actividad_estrategica': 'Gestión institucional mediante oficio para la asignación de recurso humano y transporte policial, con el propósito de garantizar la cobertura operativa diaria en zonas de interés.',
+  'indicador': 'Cantidad de oficios emitidos',
+  'meta_total': 1,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Tamarindo',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Santa Cruz',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Ejecución de actividades cívico-policiales en centros educativos, parques y espacios públicos para fortalecer la prevención y la convivencia ciudadana.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Santa Cruz',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Tamarindo',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Villarreal, 27 de Abril, Santa Cruz centro, Bolsón, Ortega, Portegolpe, La Garita, Cóbano, El Llano, Santa Bárbara',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Filadelfia',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Filadelfia',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Belén',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Belén',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Santa Cruz',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Santa Cruz',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Filadelfia',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Filadelfia',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Belén',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Belén',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Santa Cruz',
+  'indole': 'Operativo',
+  'actividad_estrategica': 'Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional.',
+  'indicador': 'Cantidad de operativos policiales',
+  'meta_total': 184,
+  'responsable': 'Jefe de delegación policial de Santa Cruz',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Santa Cruz',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Tamarindo',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Tamarindo',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Tamarindo',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Villarreal',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Santa Cruz',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Santa Cruz',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Filadelfia',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Filadelfia',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Belén',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Belén',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Tamarindo',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Tamarindo',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Villarreal',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Villarreal',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Tamarindo',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Tamarindo',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Villarreal',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Villarreal',
+  'fecha_inicio': None,
+  'fecha_fin': None},
+ {'sector': 'Santa Cruz',
+  'indole': 'Preventivo',
+  'actividad_estrategica': 'Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.',
+  'indicador': 'Cantidad de actividades preventivas realizadas',
+  'meta_total': 6,
+  'responsable': 'Director Regional',
+  'actores': 'Fuerza Pública',
+  'zona_trabajo': 'Santa Cruz',
+  'fecha_inicio': None,
+  'fecha_fin': None}
+]
+# ================================================================================
+
 # ========== DB ==========
 def get_connection():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
-def init_db():
+def init_db_and_seed():
     conn = get_connection()
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS planes (
@@ -30,7 +245,6 @@ def init_db():
         fecha_inicio TEXT,
         fecha_fin TEXT
     );
-
     CREATE TABLE IF NOT EXISTS avances (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         plan_id INTEGER NOT NULL,
@@ -41,12 +255,21 @@ def init_db():
         FOREIGN KEY(plan_id) REFERENCES planes(id) ON DELETE CASCADE
     );
     """)
-    conn.commit()
+    # Seed solo si no hay planes
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM planes;")
+    count = cur.fetchone()[0]
+    if count == 0 and SEED_PLANES:
+        cur.executemany("""
+            INSERT INTO planes (sector, indole, actividad_estrategica, indicador, meta_total, responsable, actores, zona_trabajo, fecha_inicio, fecha_fin)
+            VALUES (:sector, :indole, :actividad_estrategica, :indicador, :meta_total, :responsable, :actores, :zona_trabajo, :fecha_inicio, :fecha_fin)
+        """, SEED_PLANES)
+        conn.commit()
     conn.close()
 
-init_db()
+init_db_and_seed()
 
-# ===== Helpers =====
+# ========== Helpers ==========
 def fetch_planes(sector=None):
     conn = get_connection()
     if sector and sector != "Todos":
@@ -71,21 +294,21 @@ def insertar_avance(plan_id: int, cantidad: int, fecha_reg: date, obs: str, usua
     conn.commit()
     conn.close()
 
-# ===== UI =====
-st.title("📋 Registro de avances de actividades")
+# ========== UI ==========
+st.title("📋 Registro de avances")
 
-# opciones de sector tomadas de la DB
+# Sectores
 conn = get_connection()
 sectores_db = pd.read_sql_query("SELECT DISTINCT sector FROM planes ORDER BY sector", conn)
 conn.close()
 sectores = ["Todos"] + sectores_db["sector"].tolist()
 
 colA, colB = st.columns([1, 3])
-sector = colA.selectbox("Sector", sectores, index=sectores.index("Santa Teresa") if "Santa Teresa" in sectores else 0)
+sector = colA.selectbox("Sector", sectores, index=0)
 
 df_planes = fetch_planes(None if sector == "Todos" else sector)
 if df_planes.empty:
-    st.info("No hay planes creados para este filtro.")
+    st.info("No hay planes creados.")
     st.stop()
 
 df_planes["label"] = df_planes.apply(
@@ -95,7 +318,7 @@ df_planes["label"] = df_planes.apply(
 plan_sel = colB.selectbox("Plan disponible", df_planes["label"].tolist())
 plan = df_planes.loc[df_planes["label"] == plan_sel].iloc[0]
 
-# Resumen del plan
+# Resumen
 acumulado = fetch_avance(int(plan["id"]))
 meta = int(plan["meta_total"])
 porcentaje = min(100, round((acumulado * 100.0) / meta, 2)) if meta else 0
@@ -144,6 +367,4 @@ hist = pd.read_sql_query(
 )
 conn.close()
 st.dataframe(hist, use_container_width=True)
-
-
 
