@@ -1,108 +1,99 @@
-# admin_app.py — Dashboard (SQLite) — Planes ya vienen precargados
+import sqlite3
+from pathlib import Path
 import streamlit as st
 import pandas as pd
-import sqlite3
 
-st.set_page_config(page_title="Tablero Administrativo", layout="wide")
+st.set_page_config(page_title="Panel Admin", page_icon="📊", layout="wide")
 
-DB_PATH = "actividades.db"
+DB_PATH = Path("planes.db")
 
-def get_connection():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+# ===== Catálogo embebido (igual que app.py) =====
+PLANS = [
+    {"id":1,"indole":"Operativo","actividad":"Coordinación y ejecución de operativos interinstitucionales nocturnos con enfoque en objetivos estratégicos","zona":"Tamarindo, Flamingo, Brasilito, Potrero, Surfside","indicador":"Cantidad de operativos policiales","meta":24,"responsable":"Sub Director Regional"},
+    {"id":2,"indole":"Operativo","actividad":"Despliegue de operativos presenciales en horarios nocturnos en zonas de interés","zona":"Tamarindo","indicador":"Cantidad de operativos policiales","meta":184,"responsable":"Jefe delegación Santa Cruz"},
+    {"id":3,"indole":"Gestión administrativa","actividad":"Gestión institucional mediante oficio para asignación de recurso humano y transporte","zona":"Tamarindo","indicador":"Cantidad de oficios emitidos","meta":1,"responsable":"Director Regional"},
+    {"id":4,"indole":"Operativo","actividad":"Implementar plan de intervención interinstitucional en zona de bares para prevenir delitos y riñas","zona":"Santa Teresa","indicador":"Operativos","meta":2,"responsable":"Dirección Regional"},
+]
+PLAN_BY_ID = {p["id"]: p for p in PLANS}
 
-st.title("📊 Dashboard de avances")
+def conn():
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
-# Asegura tablas (por si abre primero el admin)
-conn = get_connection()
-conn.executescript("""
-CREATE TABLE IF NOT EXISTS planes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    sector TEXT NOT NULL,
-    indole TEXT NOT NULL,
-    actividad_estrategica TEXT NOT NULL,
-    indicador TEXT NOT NULL,
-    meta_total INTEGER NOT NULL CHECK (meta_total > 0),
-    responsable TEXT NOT NULL,
-    actores TEXT NOT NULL,
-    zona_trabajo TEXT NOT NULL,
-    fecha_inicio TEXT,
-    fecha_fin TEXT
-);
-CREATE TABLE IF NOT EXISTS avances (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    plan_id INTEGER NOT NULL,
-    cantidad INTEGER NOT NULL CHECK (cantidad > 0),
-    fecha TEXT,
-    observaciones TEXT,
-    registrado_por TEXT,
-    FOREIGN KEY(plan_id) REFERENCES planes(id) ON DELETE CASCADE
-);
-""")
-conn.commit()
+if not DB_PATH.exists():
+    st.error("No encuentro 'planes.db'. Crea/abre la base y ejecuta el SQL de esquema.")
+    st.stop()
 
-query = """
-    SELECT 
-        p.id, p.sector, p.indole, p.indicador, p.actividad_estrategica, 
-        p.meta_total, p.responsable, p.actores, p.zona_trabajo,
-        COALESCE(SUM(a.cantidad),0) AS acumulado,
-        MIN(100, ROUND(COALESCE(SUM(a.cantidad),0) * 100.0 / p.meta_total, 2)) AS porcentaje
-    FROM planes p
-    LEFT JOIN avances a ON a.plan_id = p.id
-    GROUP BY p.id
-    ORDER BY p.id DESC
-"""
-dv = pd.read_sql_query(query, conn)
-conn.close()
+st.title("📊 Panel administrativo (sin usuarios)")
 
-if dv.empty:
-    st.info("Aún no hay datos. Asegúrate de abrir la app de usuarios al menos una vez para que precargue los planes y registrar avances.")
-else:
-    colF1, colF2 = st.columns(2)
-    sectores = ["Todos"] + sorted(dv["sector"].dropna().unique().tolist())
-    indicadores = ["Todos"] + sorted(dv["indicador"].dropna().unique().tolist())
-    f_sector = colF1.selectbox("Sector", sectores)
-    f_indic = colF2.selectbox("Indicador", indicadores)
+with conn() as c:
+    prog = c.execute("SELECT plan_id, completadas, updated_at FROM activity_progress;").fetchall()
+    logs = c.execute("""
+        SELECT id, at, plan_id, delta, prev_value, new_value, reportado_por, nota
+        FROM progress_log ORDER BY at DESC, id DESC;
+    """).fetchall()
 
-    df_show = dv.copy()
-    if f_sector != "Todos":
-        df_show = df_show[df_show["sector"] == f_sector]
-    if f_indic != "Todos":
-        df_show = df_show[df_show["indicador"] == f_indic]
+# ---- Resumen por actividad ----
+progress_map = {pid: comp for (pid, comp, _) in prog}
+det_rows = []
+meta_total_global = 0
+hechas_global = 0
 
-    meta_global = int(df_show["meta_total"].sum()) if not df_show.empty else 0
-    acum_global = int(df_show["acumulado"].sum()) if not df_show.empty else 0
-    pct_global = 0 if meta_global == 0 else round(min(100, acum_global * 100.0 / meta_global), 2)
+for p in PLANS:
+    hechas = int(progress_map.get(p["id"], 0))
+    meta = int(p["meta"])
+    meta_total_global += meta
+    hechas_global += hechas
+    det_rows.append({
+        "Plan ID": p["id"],
+        "Índole": p["indole"],
+        "Actividad estratégica": p["actividad"],
+        "Meta": meta,
+        "Completadas": hechas,
+        "Pendientes": meta - hechas,
+        "% Avance": (0 if meta==0 else round(100 * hechas / meta, 1))
+    })
+df_det = pd.DataFrame(det_rows)
 
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Meta global", meta_global)
-    m2.metric("Acumulado global", acum_global)
-    m3.metric("Avance global", f"{pct_global}%")
-    st.progress(int(pct_global))
+st.subheader("Avance por actividad")
+st.dataframe(df_det, use_container_width=True, hide_index=True)
 
-    st.markdown("#### Avance por plan")
-    st.dataframe(df_show[[
-        "id","sector","indicador","actividad_estrategica","meta_total","acumulado","porcentaje","responsable","actores","zona_trabajo"
-    ]], use_container_width=True)
+st.subheader("Indicadores globales")
+pct_global = 0 if meta_total_global==0 else round(100 * hechas_global / meta_total_global, 1)
+k1, k2, k3 = st.columns(3)
+k1.metric("Meta total global", f"{meta_total_global}")
+k2.metric("Acciones realizadas", f"{hechas_global}")
+k3.metric("Avance global", f"{pct_global} %")
+st.progress(0 if meta_total_global==0 else min(1.0, hechas_global/meta_total_global))
 
-    # Gráfico opcional
-    try:
-        import matplotlib.pyplot as plt
-        chart_df = df_show.sort_values("porcentaje", ascending=False)[["indicador","porcentaje","sector"]]
-        if not chart_df.empty:
-            st.markdown("#### % de avance por plan")
-            fig = plt.figure()
-            plt.barh(chart_df["indicador"] + " – " + chart_df["sector"].astype(str), chart_df["porcentaje"])
-            plt.xlabel("% avance"); plt.ylabel("Plan")
-            st.pyplot(fig)
-    except Exception:
-        st.info("Para ver el gráfico, agrega `matplotlib` en requirements.")
+# ---- Bitácora ----
+st.subheader("Bitácora de movimientos")
+log_rows = []
+for (_id, at, pid, delta, prevv, newv, quien, nota) in logs:
+    act = PLAN_BY_ID.get(pid, {"actividad": f"Plan {pid}"} )["actividad"]
+    log_rows.append({
+        "Fecha (UTC)": at,
+        "Plan ID": pid,
+        "Actividad": act,
+        "Δ": delta,
+        "Antes": prevv,
+        "Ahora": newv,
+        "Reportado por": quien or "",
+        "Nota": nota or ""
+    })
+df_log = pd.DataFrame(log_rows)
 
-    st.download_button(
-        "⬇ Descargar CSV",
-        data=df_show.to_csv(index=False).encode("utf-8"),
-        file_name="planes_avance.csv",
-        mime="text/csv",
-    )
+# Filtros simples
+c1, c2 = st.columns(2)
+with c1:
+    f_plan = st.multiselect("Filtrar por Plan ID", sorted(df_log["Plan ID"].unique()))
+with c2:
+    f_quien = st.text_input("Buscar en 'Reportado por'")
 
+tmp = df_log.copy()
+if f_plan:
+    tmp = tmp[tmp["Plan ID"].isin(f_plan)]
+if f_quien.strip():
+    sub = f_quien.strip().lower()
+    tmp = tmp[tmp["Reportado por"].str.lower().str.contains(sub, na=False)]
+
+st.dataframe(tmp, use_container_width=True, hide_index=True)
