@@ -62,7 +62,7 @@ df = df.copy()
 df["Meta_q"] = pd.to_numeric(df.get(COL_META), errors="coerce")
 if COL_PERI in df: df["Peri_norm"] = df[COL_PERI].map(norm_peri)
 
-# ======== GRAFICO 1 (único cuantitativo principal): Donut por Responsable ========
+# ======== GRAFICO 1 (principal): Donut por Responsable ========
 st.header("1) Meta cuantitativa por responsable (donut)")
 df_mr = df.loc[df["Meta_q"].notna() & df[COL_RESP].notna(), [COL_RESP,"Meta_q"]]
 if df_mr.empty:
@@ -73,10 +73,9 @@ else:
     values = list(resumen.values)
     total = int(np.nansum(values))
 
-    # donut con colores distintos
     fig, ax = plt.subplots(figsize=(9,6), constrained_layout=True)
     colors = [PALETA[i % len(PALETA)] for i in range(len(labels))]
-    wedges, _, autotexts = ax.pie(
+    wedges, _, _ = ax.pie(
         values, startangle=90, pctdistance=0.78,
         autopct=lambda p: f"{p:.1f}%\n({int(round(p*total/100.0))})",
         colors=colors
@@ -88,7 +87,6 @@ else:
     st.pyplot(fig)
     st.download_button("🖼️ Descargar PNG", data=save_png(fig), file_name="donut_meta_responsable.png", mime="image/png")
 
-    # texto claro
     top_name = labels[0]; top_val = int(values[0]); top_pct = round(top_val/total*100,1) if total>0 else 0
     st.markdown(
         f"**Resumen:** el responsable con mayor carga es **{top_name}** con **{top_val}** unidades "
@@ -100,9 +98,7 @@ st.markdown("---")
 
 # ======== GRAFICO 2: Índole (solo 3 categorías) ========
 st.header("2) Índole (Operativo, Preventivo, Gestión administrativa)")
-# si no está la columna por nombre, usamos la columna B
 serie_indole = df[COL_INDOLE] if COL_INDOLE in df.columns else (df.iloc[:,1] if df.shape[1]>1 else pd.Series(dtype=object))
-# mapeo a 3 clases
 MAP_INDOLE = {
     "operativo":"Operativo",
     "preventivo":"Preventivo",
@@ -114,7 +110,6 @@ def map_indole(v):
     k = str(v).strip().lower()
     for kk, vv in MAP_INDOLE.items():
         if kk in k: return vv
-    # si coincide exactamente con tus valores, se respeta:
     if str(v).strip() in MAP_INDOLE.values(): return str(v).strip()
     return np.nan  # ignora otros textos largos
 
@@ -193,31 +188,61 @@ if acts:
 
 # --- Actores – Indicador – Consideraciones (tabla) ---
 st.subheader("Actores involucrados / Indicador / Consideraciones")
-txt_tabla = st.text_area("Pega la tabla (3 columnas separadas por TAB o punto y coma ';'):", value=
-"""Fuerza Pública|Policía de Tránsito|Policía de Migración|Policía Turística|DIAC;Cantidad de operativos policiales;1-Es necesario reforzar el personal del DIAC para esclarecer los objetivos a intervenir durante los operativos.\n2-Se requiere la presencia de la unidad de policía canina.\n3-La ubicación de los operativos debe ser aleatoria, según análisis previo de la zona.\n4-Los operativos deben ser fugaces, con una duración máxima de 40 minutos por zona.
-Fuerza Pública;Cantidad de operativos policiales;1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de ejecución, con el fin de garantizar la efectividad de la acción policial.\n2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura operativa adecuada y fortalecer la intervención en campo.
+
+txt_tabla = st.text_area(
+    "Pega la tabla (3 columnas separadas por ';' o TAB; las Consideraciones pueden llevar varias líneas numeradas):",
+    value="""Fuerza Pública|Policía de Tránsito|Policía de Migración|Policía Turística|DIAC;Cantidad de operativos policiales;1-Es necesario reforzar el personal del DIAC para esclarecer los objetivos a intervenir durante los operativos.
+2-Se requiere la presencia de la unidad de policía canina.
+3-La ubicación de los operativos debe ser aleatoria, según análisis previo de la zona.
+4-Los operativos deben ser fugaces, con una duración máxima de 40 minutos por zona.
+Fuerza Pública;Cantidad de operativos policiales;1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de ejecución, con el fin de garantizar la efectividad de la acción policial.
+2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura operativa adecuada y fortalecer la intervención en campo.
 Fuerza Pública;Cantidad de oficios emitidos;
 Fuerza Pública;Cantidad de cívicos policiales;NA
-Fuerza Pública;Cantidad de operativos policiales;1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de ejecución, con el fin de garantizar la efectividad de la acción policial.\n2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura operativa adecuada y fortalecer la intervención en campo.
+Fuerza Pública;Cantidad de operativos policiales;1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de ejecución, con el fin de garantizar la efectividad de la acción policial.
+2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura operativa adecuada y fortalecer la intervención en campo.
 Fuerza Pública|Policía de Tránsito|Policía de Migración|Policía Turística|DIAC;Cantidad de operativos policiales;NA
 Fuerza Pública;Cantidad de acciones preventivas;NA
 Fuerza Pública;Cantidad de talleres;NA
 Fuerza Pública;Cantidad de operativos policiales;NA
 Fuerza Pública;Cantidad de capacitaciones;NA"""
 )
+
 rows = []
-for line in txt_tabla.splitlines():
-    if not line.strip(): continue
-    parts = [p.strip() for p in re.split(r";|\t", line, maxsplit=2)]
-    if len(parts)<3: parts += [""]*(3-len(parts))
-    actores, indicador, consid = parts
-    if (not actores) and (not indicador) and (not consid): continue
-    if consid.upper()=="NA": consid = ""
-    rows.append({"Actores": actores.replace("|", ", "), "Indicador": indicador, "Consideraciones": consid})
-if rows:
-    tabla = pd.DataFrame(rows)
-    tabla = tabla[(tabla["Actores"]!="") | (tabla["Indicador"]!="") | (tabla["Consideraciones"]!="")]
-    st.dataframe(tabla, use_container_width=True)
+last = None
+for raw in txt_tabla.splitlines():
+    line = raw.strip()
+    if not line:
+        continue
+
+    # Si NO hay separadores y parece una viñeta numerada -> anexar a la fila anterior (Consideraciones)
+    if (";" not in line and "\t" not in line) and re.match(r"^(\d+[\-\.)]|[-•–])\s*", line):
+        if last is not None:
+            last["Consideraciones"] = (last["Consideraciones"] + ("\n" if last["Consideraciones"] else "") + line)
+        continue
+
+    # Partir en 3 columnas (Actores;Indicador;Consideraciones)
+    parts = re.split(r";|\t", line, maxsplit=2)
+    parts += [""] * (3 - len(parts))
+    actores, indicador, consid = [p.strip() for p in parts]
+
+    # normalizar: pipes como comas
+    actores = actores.replace("|", ", ")
+
+    # Consideraciones "NA" -> vacío
+    if consid.upper() == "NA":
+        consid = ""
+
+    row = {"Actores": actores, "Indicador": indicador, "Consideraciones": consid}
+    rows.append(row)
+    last = row
+
+# limpiar filas totalmente vacías
+tabla = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Actores","Indicador","Consideraciones"])
+if not tabla.empty:
+    mask_keep = tabla[["Actores","Indicador","Consideraciones"]].apply(lambda s: s.astype(str).str.strip().astype(bool)).any(axis=1)
+    tabla = tabla[mask_keep].reset_index(drop=True)
+st.dataframe(tabla, use_container_width=True)
 
 # --- Efecto esperado (lista) ---
 st.subheader("Efecto esperado")
@@ -247,7 +272,7 @@ items = [re.sub(r"^\s*\d+[\).]?\s*","",x).strip() for x in txt_desarrollo.splitl
 if items:
     st.dataframe(pd.DataFrame({"#": range(1,len(items)+1), "Actividad": items}), use_container_width=True)
 
-# --- Listados Operativo / Preventivo (si quieres mostrarlos) ---
+# --- Notas Operativo / Preventivo (opcional) ---
 with st.expander("Notas operativas y preventivas (opcional)"):
     col1, col2 = st.columns(2)
     with col1:
@@ -275,6 +300,6 @@ Acciones preventivas comunales involucrados para mejorar la imagen de Fuerza Pú
 Se presenta una planificación de los 4 meses que faltan del año en Villareal, Brasilito, Surfside y Potrero
 Iniciaron en Julio las Ligas Atleticas en Brasilito""", height=220)
 
-st.caption("🎨 Gráficos: rojo/azul con sombra. Donut con colores únicos por responsable. Índole limitada a 3 categorías. Los bloques cualitativos son editables y omiten filas vacías/NA.")
+st.caption("🎨 Gráficos: rojo/azul con sombra. Donut con colores únicos por responsable. Índole limitada a 3 categorías. La tabla de Actores/Indicador/Consideraciones ya no se cruza: las viñetas numeradas se anexan a la fila correcta y se omiten 'NA'.")
 
 
