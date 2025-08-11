@@ -1,70 +1,227 @@
-# app.py — Registro de avances (SQLite) con planes precargados o pegados como CSV (sin Excel)
+# app.py — Seguimiento de actividades (SQLite) con 10 planes precargados
 import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import date
-from io import StringIO
 
 st.set_page_config(page_title="Seguimiento de Actividades", layout="wide")
 
 DB_PATH = "actividades.db"
 
-# ================== 1) PLANES PRE-CARGADOS (opcional) ==================
-# Reemplaza los 10 dicts por TUS 10 FILAS exactas (sin duplicados).
-# Si lo dejas vacío, podrás pegarlos como CSV desde la app (una sola vez).
+# ===================== 10 PLANES PRE-CARGADOS =====================
 SEED_PLANES = [
-    # EJEMPLOS — borra/ajusta y deja TUS 10
-    # {
-    #     "sector": "Tamarindo",
-    #     "indole": "Operativo",
-    #     "actividad_estrategica": "Despliegue de operativos nocturnos en puntos de interés para reforzar vigilancia y disuasión del delito.",
-    #     "indicador": "Cantidad de operativos policiales",
-    #     "meta_total": 184,
-    #     "responsable": "Jefe de delegación policial de Santa Cruz",
-    #     "actores": "Fuerza Pública",
-    #     "zona_trabajo": "Tamarindo",
-    #     "fecha_inicio": None, "fecha_fin": None,
-    # },
-    # {
-    #     "sector": "Flamingo",
-    #     "indole": "Operativo",
-    #     "actividad_estrategica": "Despliegue de operativos nocturnos en puntos de interés para reforzar vigilancia y disuasión del delito.",
-    #     "indicador": "Cantidad de operativos policiales",
-    #     "meta_total": 184,
-    #     "responsable": "Jefe de delegación policial de Santa Cruz",
-    #     "actores": "Fuerza Pública",
-    #     "zona_trabajo": "Flamingo",
-    #     "fecha_inicio": None, "fecha_fin": None,
-    # },
-    # ... agrega aquí el resto hasta completar tus 10 filas ...
+    {
+        "indole": "Operativo",
+        "actividad_estrategica": (
+            "Coordinación y ejecución de operativos interinstitucionales nocturnos "
+            "con enfoque en objetivos estratégicos dentro del área de intervención."
+        ),
+        "zona_trabajo": "Tamarindo, Villarreal, Flamingo, Brasilito, Potrero y Surfside",
+        "actores": "Fuerza Pública; Policía de Tránsito; Policía de Migración; Policía Turística; DIAC",
+        "indicador": "Cantidad de operativos policiales",
+        "consideraciones": (
+            "1-Es necesario reforzar al personal del DIAC para esclarecer los objetivos a intervenir durante los operativos.\n"
+            "2-Se requiere la presencia de la unidad de policía canina.\n"
+            "3-La ubicación de los operativos debe ser aleatoria, según análisis previo de la zona."
+        ),
+        "periodicidad": "Semanal",
+        "meta_total": 24,
+        "responsable": "Sub Director Regional",
+        "efecto_esperado": (
+            "Reducción de actividades ilícitas y fortalecimiento de la presencia institucional en horarios de mayor riesgo."
+        ),
+    },
+    {
+        "indole": "Operativo",
+        "actividad_estrategica": (
+            "Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés, "
+            "con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional."
+        ),
+        "zona_trabajo": "Tamarindo",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de operativos policiales",
+        "consideraciones": (
+            "1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de ejecución, "
+            "con el fin de garantizar la efectividad de la acción policial.\n"
+            "2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura."
+        ),
+        "periodicidad": "Diario",
+        "meta_total": 184,
+        "responsable": "Jefe de delegación policial de Santa Cruz",
+        "efecto_esperado": "Aumento de la percepción policial en puntos críticos mediante presencia policial visible.",
+    },
+    {
+        "indole": "Gestión administrativa",
+        "actividad_estrategica": (
+            "Gestión institucional mediante oficio para la asignación de recurso humano y transporte policial necesario para "
+            "garantizar la cobertura operativa diaria en zonas de interés."
+        ),
+        "zona_trabajo": "Tamarindo",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de oficios emitidos",
+        "consideraciones": "",
+        "periodicidad": "Semestral",
+        "meta_total": 1,
+        "responsable": "Director Regional",
+        "efecto_esperado": (
+            "Asegurar una presencia policial continua y eficaz en las zonas priorizadas, mediante la dotación oportuna de recurso "
+            "personal y los medios logísticos requeridos."
+        ),
+    },
+    {
+        "indole": "Preventivo",
+        "actividad_estrategica": (
+            "Ejecución de actividades cívico‑policiales en espacios públicos y centros educativos, orientadas a fortalecer "
+            "los vínculos comunitarios, promover la cultura de paz y fomentar la convivencia ciudadana desde un enfoque preventivo."
+        ),
+        "zona_trabajo": "Villarreal",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de cívicos policiales",
+        "consideraciones": "NA",
+        "periodicidad": "Mensual",
+        "meta_total": 6,
+        "responsable": "Director Regional",
+        "efecto_esperado": (
+            "Fortalecer el vínculo entre la comunidad y la Fuerza Pública, promoviendo una cultura de paz, prevención y convivencia "
+            "por medio de la interacción positiva en espacios públicos y centros educativos."
+        ),
+    },
+    {
+        "indole": "Operativo",
+        "actividad_estrategica": (
+            "Despliegue de operativos presenciales en horarios mixtos en zonas previamente identificadas como puntos de interés, "
+            "con el objetivo de reforzar la vigilancia, la disuasión del delito y la presencia institucional."
+        ),
+        "zona_trabajo": "Flamingo",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de operativos policiales",
+        "consideraciones": (
+            "1-Se requiere el apoyo constante de al menos 12 funcionarios del personal de gestión durante todos los días de la ejecución, "
+            "con el fin de garantizar la efectividad de la acción policial.\n"
+            "2-Es necesario disponer de al menos una unidad policial adicional (recurso móvil) para asegurar una cobertura."
+        ),
+        "periodicidad": "Diario",
+        "meta_total": 184,
+        "responsable": "Jefe de delegación policial de Santa Cruz",
+        "efecto_esperado": "Aumento de la percepción policial en puntos críticos mediante presencia policial visible.",
+    },
+    {
+        "indole": "Operativo",
+        "actividad_estrategica": (
+            "Desarrollo de operativos interinstitucionales de control dirigidos a la regulación de ventas informales y actividades no autorizadas "
+            "de cobro de parqueo en zona costera."
+        ),
+        "zona_trabajo": "Flamingo y Brasilito",
+        "actores": "Fuerza Pública; Policía de Tránsito; Policía de Migración; Policía Turística; DIAC",
+        "indicador": "Cantidad de operativos policiales",
+        "consideraciones": "NA",
+        "periodicidad": "Quincenal",
+        "meta_total": 12,
+        "responsable": "Jefe de delegación policial de Santa Cruz",
+        "efecto_esperado": (
+            "Recuperar el orden en el espacio público, reducir la informalidad y garantizar condiciones más seguras y reguladas para "
+            "residentes, turistas y comercios formales."
+        ),
+    },
+    {
+        "indole": "Preventivo",
+        "actividad_estrategica": (
+            "Implementación de acciones preventivas, lideradas por programas policiales, orientadas a la recreación y apropiación positiva "
+            "de espacios públicos."
+        ),
+        "zona_trabajo": "Brasilito",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de acciones preventivas",
+        "consideraciones": "NA",
+        "periodicidad": "Quincenal",
+        "meta_total": 12,
+        "responsable": "Director Regional",
+        "efecto_esperado": (
+            "Transformar los espacios públicos en entornos seguros y activos, fomentando su uso positivo por parte de la comunidad y "
+            "reduciendo su vulnerabilidad a actividades delictivas."
+        ),
+    },
+    {
+        "indole": "Preventivo",
+        "actividad_estrategica": (
+            "Ejecución de talleres y jornadas de sensibilización en seguridad comercial, dirigidas a fortalecer las capacidades preventivas "
+            "del sector empresarial."
+        ),
+        "zona_trabajo": "Brasilito",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de talleres",
+        "consideraciones": "NA",
+        "periodicidad": "Semestral",
+        "meta_total": 6,
+        "responsable": "Director Regional",
+        "efecto_esperado": (
+            "Mejorar la percepción de seguridad y fortalecer la capacidad de prevención del delito en el sector comercial, mediante la adopción "
+            "de buenas prácticas y la actualización continua."
+        ),
+    },
+    {
+        "indole": "Operativo",
+        "actividad_estrategica": (
+            "Ejecución de operativos policiales focalizados para abordaje e identificación de personas y vehículos vinculados a delitos de "
+            "robo en viviendas, en coordinación con unidades de información e inteligencia policial."
+        ),
+        "zona_trabajo": "Surfside",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de operativos policiales",
+        "consideraciones": "NA",
+        "periodicidad": "Mensual",
+        "meta_total": 6,
+        "responsable": "Jefe de delegación policial de Santa Cruz",
+        "efecto_esperado": (
+            "Reducir la incidencia de robos a viviendas mediante la identificación oportuna de objetivos vinculados, así como el fortalecimiento "
+            "de la capacidad de respuesta y disuasión policial en zonas residenciales vulnerables."
+        ),
+    },
+    {
+        "indole": "Preventivo",
+        "actividad_estrategica": (
+            "Capacitaciones en Seguridad Comunitaria, dirigidas a residentes extranjeros angloparlantes, con el fin de mejorar su integración "
+            "y participación en los servicios preventivos locales."
+        ),
+        "zona_trabajo": "Surfside",
+        "actores": "Fuerza Pública",
+        "indicador": "Cantidad de capacitaciones",
+        "consideraciones": "NA",
+        "periodicidad": "Semestral",
+        "meta_total": 1,
+        "responsable": "Director Regional",
+        "efecto_esperado": (
+            "Mejorar el nivel de conocimiento y la capacidad de respuesta de la población extranjera residente, promoviendo su vinculación con "
+            "las estrategias de seguridad comunitaria y fortaleciendo la cohesión social."
+        ),
+    },
 ]
-# =======================================================================
+# ================================================================
 
-# ================== 2) DB ==================
-def get_conn():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
+# ===================== SQLite =====================
+def conn():
+    c = sqlite3.connect(DB_PATH, check_same_thread=False)
+    c.execute("PRAGMA foreign_keys = ON;")
+    return c
 
 def init_db():
-    conn = get_conn()
-    conn.executescript("""
+    c = conn()
+    c.executescript("""
     CREATE TABLE IF NOT EXISTS planes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sector TEXT NOT NULL,
         indole TEXT NOT NULL,
         actividad_estrategica TEXT NOT NULL,
+        zona_trabajo TEXT NOT NULL,
+        actores TEXT NOT NULL,
         indicador TEXT NOT NULL,
+        consideraciones TEXT,
+        periodicidad TEXT,
         meta_total INTEGER NOT NULL CHECK (meta_total > 0),
         responsable TEXT NOT NULL,
-        actores TEXT NOT NULL,
-        zona_trabajo TEXT NOT NULL,
-        fecha_inicio TEXT,
-        fecha_fin TEXT,
-        -- Clave única SIN usar zona para evitar duplicar por lugar
-        UNIQUE (sector, indole, indicador, actividad_estrategica, meta_total, responsable)
+        efecto_esperado TEXT,
+        -- Clave única para evitar duplicados (sin usar la zona como clave)
+        UNIQUE (indole, actividad_estrategica, indicador, meta_total, responsable)
     );
-
     CREATE TABLE IF NOT EXISTS avances (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         plan_id INTEGER NOT NULL,
@@ -75,184 +232,135 @@ def init_db():
         FOREIGN KEY(plan_id) REFERENCES planes(id) ON DELETE CASCADE
     );
     """)
-    conn.commit()
-
-    # si hay seed en el código y la tabla está vacía, siembra
-    if SEED_PLANES:
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM planes;")
-        if cur.fetchone()[0] == 0:
-            cur.executemany("""
-                INSERT OR IGNORE INTO planes
-                (sector, indole, actividad_estrategica, indicador, meta_total, responsable, actores, zona_trabajo, fecha_inicio, fecha_fin)
-                VALUES (:sector, :indole, :actividad_estrategica, :indicador, :meta_total, :responsable, :actores, :zona_trabajo, :fecha_inicio, :fecha_fin)
-            """, SEED_PLANES)
-            conn.commit()
-
-    conn.close()
+    # sembrar si está vacío
+    cur = c.cursor()
+    cur.execute("SELECT COUNT(*) FROM planes;")
+    if cur.fetchone()[0] == 0:
+        cur.executemany("""
+            INSERT OR IGNORE INTO planes
+            (indole, actividad_estrategica, zona_trabajo, actores, indicador, consideraciones, periodicidad, meta_total, responsable, efecto_esperado)
+            VALUES (:indole, :actividad_estrategica, :zona_trabajo, :actores, :indicador, :consideraciones, :periodicidad, :meta_total, :responsable, :efecto_esperado)
+        """, SEED_PLANES)
+        c.commit()
+    c.close()
 
 init_db()
 
-# ================== 3) Helpers ==================
-def fetch_planes(sector=None):
-    conn = get_conn()
-    if sector and sector != "Todos":
-        df = pd.read_sql_query("SELECT * FROM planes WHERE sector = ? ORDER BY id", conn, params=(sector,))
-    else:
-        df = pd.read_sql_query("SELECT * FROM planes ORDER BY id", conn)
-    conn.close()
+# ===================== Helpers =====================
+def get_planes():
+    c = conn()
+    df = pd.read_sql_query(
+        "SELECT id, indole, indicador, meta_total, responsable, zona_trabajo FROM planes ORDER BY id", c
+    )
+    c.close()
     return df
 
-def fetch_avance(plan_id: int) -> int:
-    conn = get_conn()
-    df = pd.read_sql_query("SELECT cantidad FROM avances WHERE plan_id = ?", conn, params=(plan_id,))
-    conn.close()
-    return int(df["cantidad"].sum()) if not df.empty else 0
+def get_plan(plan_id: int):
+    c = conn()
+    df = pd.read_sql_query("SELECT * FROM planes WHERE id = ?", c, params=(plan_id,))
+    c.close()
+    return df.iloc[0]
 
-def insertar_avance(plan_id: int, cantidad: int, fecha_reg: date, obs: str, usuario: str):
-    conn = get_conn()
-    conn.execute("""
-        INSERT INTO avances (plan_id, cantidad, fecha, observaciones, registrado_por)
-        VALUES (?, ?, ?, ?, ?)
-    """, (plan_id, int(cantidad), str(fecha_reg), (obs or None), (usuario or None)))
-    conn.commit()
-    conn.close()
+def get_acumulado(plan_id: int) -> int:
+    c = conn()
+    df = pd.read_sql_query("SELECT SUM(cantidad) AS s FROM avances WHERE plan_id = ?", c, params=(plan_id,))
+    c.close()
+    return int(df.s.fillna(0).iloc[0])
 
-def insertar_planes_desde_df(df: pd.DataFrame):
-    # Espera columnas: sector,indole,actividad_estrategica,indicador,meta_total,responsable,actores,zona_trabajo,fecha_inicio,fecha_fin
-    req = ["sector","indole","actividad_estrategica","indicador","meta_total","responsable","actores","zona_trabajo"]
-    faltantes = [c for c in req if c not in df.columns]
-    if faltantes:
-        raise ValueError(f"Faltan columnas: {faltantes}")
-    df = df.copy()
-    df["meta_total"] = pd.to_numeric(df["meta_total"], errors="coerce").fillna(0).astype(int)
-    df = df[df["meta_total"] > 0]
-    if "fecha_inicio" not in df.columns: df["fecha_inicio"] = None
-    if "fecha_fin" not in df.columns: df["fecha_fin"] = None
-    conn = get_conn()
-    conn.executemany("""
-        INSERT OR IGNORE INTO planes
-        (sector, indole, actividad_estrategica, indicador, meta_total, responsable, actores, zona_trabajo, fecha_inicio, fecha_fin)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, df[["sector","indole","actividad_estrategica","indicador","meta_total","responsable","actores","zona_trabajo","fecha_inicio","fecha_fin"]].values.tolist())
-    conn.commit()
-    conn.close()
+def add_avance(plan_id: int, cantidad: int, fecha: date, obs: str, user: str):
+    c = conn()
+    c.execute(
+        "INSERT INTO avances (plan_id, cantidad, fecha, observaciones, registrado_por) VALUES (?,?,?,?,?)",
+        (plan_id, int(cantidad), str(fecha), (obs or None), (user or None)),
+    )
+    c.commit()
+    c.close()
 
-# ================== 4) UI ==================
+def get_historial(plan_id: int):
+    c = conn()
+    df = pd.read_sql_query(
+        "SELECT fecha, cantidad, registrado_por AS usuario, observaciones FROM avances WHERE plan_id = ? ORDER BY id DESC",
+        c, params=(plan_id,),
+    )
+    c.close()
+    return df
+
+# ===================== UI =====================
 st.title("📋 Registro de avances")
 
-# Si no hay planes, mostrar un cargador rápido (sin Excel): pegar CSV y crear los 10
-df_planes_existentes = fetch_planes()
-if df_planes_existentes.empty:
-    with st.expander("➕ Cargar los 10 planes (pegar CSV aquí)"):
-        st.caption("Formato esperado: sector,indole,actividad_estrategica,indicador,meta_total,responsable,actores,zona_trabajo[,fecha_inicio][,fecha_fin]")
-        ejemplo = (
-            "sector,indole,actividad_estrategica,indicador,meta_total,responsable,actores,zona_trabajo,fecha_inicio,fecha_fin\n"
-            "Tamarindo,Operativo,Despliegue de operativos nocturnos...,Cantidad de operativos policiales,184,Jefe de delegación policial de Santa Cruz,Fuerza Pública,Tamarindo,,\n"
-            "Flamingo,Operativo,Despliegue de operativos nocturnos...,Cantidad de operativos policiales,184,Jefe de delegación policial de Santa Cruz,Fuerza Pública,Flamingo,,\n"
-            "Tamarindo,Operativo,Coordinación y ejecución de operativos interinstitucionales...,Cantidad de operativos policiales,24,Sub Director Regional,Fuerza Pública; Tránsito; Migración; Turística; DIAC,Tamarindo, , \n"
-            "Tamarindo,Gestión administrativa,Oficios para asignar recurso humano y transporte...,Cantidad de oficios emitidos,1,Director Regional,Fuerza Pública,Tamarindo,,\n"
-            "Santa Cruz,Preventivo,Charlas preventivas y acercamiento comunitario...,Cantidad de actividades preventivas realizadas,6,Director Regional,Fuerza Pública,Santa Cruz,,\n"
-            "----- agrega aquí tus 5 filas restantes (hasta 10 en total) -----"
-        )
-        csv_text = st.text_area("Pega aquí el CSV (10 filas)", value=ejemplo, height=220)
-        if st.button("Cargar planes", type="primary"):
-            try:
-                df_in = pd.read_csv(StringIO(csv_text))
-                insertar_planes_desde_df(df_in)
-                st.success(f"Se cargaron {len(df_in)} planes ✅")
-                st.experimental_rerun()
-            except Exception as e:
-                st.error(f"Error al cargar: {e}")
-    st.stop()
-
-# Filtro por sector
-conn = get_conn()
-sectores_db = pd.read_sql_query("SELECT DISTINCT sector FROM planes ORDER BY sector", conn)
-conn.close()
-sectores = ["Todos"] + sectores_db["sector"].tolist()
-
-col_f1, col_f2 = st.columns([1, 2])
-sector_sel = col_f1.selectbox("Sector", sectores, index=0)
-
-df_planes = fetch_planes(None if sector_sel == "Todos" else sector_sel)
+df_planes = get_planes()
 if df_planes.empty:
-    st.info("No hay planes para este sector.")
+    st.error("No se cargaron los planes. Avísame y los pego de nuevo.")
     st.stop()
 
-# Tabla 1 fila = 1 plan
+# Tabla compacta (1 fila = 1 plan)
 st.markdown("### 📑 Planes disponibles")
-tabla = df_planes[["id","sector","indicador","meta_total","responsable","zona_trabajo"]].rename(columns={
-    "id":"ID","sector":"Sector","indicador":"Indicador","meta_total":"Meta","responsable":"Responsable","zona_trabajo":"Zona(s) de trabajo"
-})
-st.dataframe(tabla, use_container_width=True, hide_index=True)
+st.dataframe(
+    df_planes.rename(columns={
+        "id": "ID", "indole": "Índole", "indicador": "Indicador",
+        "meta_total": "Meta", "responsable": "Responsable", "zona_trabajo": "Zona(s)"
+    }),
+    use_container_width=True, hide_index=True
+)
 
-# Selección por ID (compacta)
-ids = df_planes["id"].tolist()
-plan_id = col_f2.selectbox(
+# Selector por ID
+plan_id = st.selectbox(
     "Selecciona un plan por ID",
-    options=ids,
+    options=df_planes["id"].tolist(),
     format_func=lambda i: f"ID {i} – {df_planes.loc[df_planes['id']==i, 'indicador'].values[0]}",
 )
-plan = df_planes[df_planes["id"] == plan_id].iloc[0]
 
-# Resumen del avance
-acumulado = fetch_avance(int(plan["id"]))
+plan = get_plan(plan_id)
+acum = get_acumulado(plan_id)
 meta = int(plan["meta_total"])
-porcentaje = min(100, round((acumulado * 100.0) / meta, 2)) if meta else 0
+pct = min(100, round(acum * 100.0 / meta, 2)) if meta else 0
 
 st.markdown("### 📌 Resumen del avance")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Meta total", meta)
-m2.metric("Acumulado", acumulado)
-m3.metric("Restante", max(0, meta - acumulado))
-m4.metric("% Avance", f"{porcentaje}%")
-st.progress(int(porcentaje))
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Meta total", meta)
+c2.metric("Acumulado", acum)
+c3.metric("Restante", max(0, meta - acum))
+c4.metric("% Avance", f"{pct}%")
+st.progress(int(pct))
 
-# Detalles limpios
 st.markdown("### 🧾 Detalles del plan")
 d1, d2 = st.columns(2)
 with d1:
-    st.markdown(f"**Sector:** {plan['sector']}")
     st.markdown(f"**Índole:** {plan['indole']}")
     st.markdown(f"**Indicador:** {plan['indicador']}")
+    st.markdown(f"**Periodicidad:** {plan['periodicidad'] or '-'}")
     st.markdown(f"**Responsable:** {plan['responsable']}")
 with d2:
-    st.markdown(f"**Actores involucrados:** {plan['actores']}")
+    st.markdown(f"**Actores:** {plan['actores']}")
     st.markdown(f"**Zona(s) de trabajo:** {plan['zona_trabajo']}")
-    periodo = f"{plan['fecha_inicio'] or ''} - {plan['fecha_fin'] or ''}"
-    st.markdown(f"**Periodo:** {periodo}")
 st.markdown("**Actividad estratégica:**")
 st.write(plan["actividad_estrategica"])
+if plan["consideraciones"]:
+    st.markdown("**Consideraciones:**")
+    st.write(plan["consideraciones"])
+if plan["efecto_esperado"]:
+    st.markdown("**Efecto esperado:**")
+    st.write(plan["efecto_esperado"])
 
-# Registro de avances (evitando superar la meta)
 st.markdown("### ➕ Registrar avance")
-c1, c2, c3 = st.columns([1, 1, 2])
-cantidad = c1.number_input("Cantidad realizada", min_value=1, value=1, step=1)
-fecha_reg = c2.date_input("Fecha", value=date.today())
-usuario = c3.text_input("Registrado por (opcional)")
+col1, col2, col3 = st.columns([1, 1, 2])
+cantidad = col1.number_input("Cantidad", min_value=1, value=1, step=1)
+fecha = col2.date_input("Fecha", value=date.today())
+user = col3.text_input("Registrado por (opcional)")
 obs = st.text_area("Observaciones (opcional)")
 
-if acumulado + cantidad > meta:
-    st.warning(f"Este registro superaría la meta ({acumulado}+{cantidad} > {meta}). Ajusta la cantidad.")
+if acum + cantidad > meta:
+    st.warning(f"Este registro superaría la meta ({acum}+{cantidad} > {meta}). Ajusta la cantidad.")
 
 if st.button("Guardar avance", type="primary"):
-    try:
-        if acumulado + cantidad > meta:
-            st.error("No se guardó porque sobrepasa la meta.")
-        else:
-            insertar_avance(int(plan["id"]), cantidad, fecha_reg, obs, usuario)
-            st.success("Avance registrado ✅")
-            st.experimental_rerun()
-    except Exception as e:
-        st.error(f"Error al guardar: {e}")
+    if acum + cantidad > meta:
+        st.error("No se guardó porque sobrepasa la meta.")
+    else:
+        add_avance(plan_id, cantidad, fecha, obs, user)
+        st.success("Avance registrado ✅")
+        st.rerun()
 
-# Historial
-st.markdown("### 🧾 Historial del plan")
-conn = get_conn()
-hist = pd.read_sql_query(
-    "SELECT fecha, cantidad, registrado_por AS usuario, observaciones FROM avances WHERE plan_id = ? ORDER BY id DESC",
-    conn, params=(int(plan["id"]),),
-)
-conn.close()
-st.dataframe(hist, use_container_width=True, hide_index=True)
+st.markdown("### 🧾 Historial")
+st.dataframe(get_historial(plan_id), use_container_width=True, hide_index=True)
+
+
