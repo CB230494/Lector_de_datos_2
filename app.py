@@ -6,16 +6,16 @@ st.subheader("📈 Avances por meta (10 filas)")
 
 # Metas según la tabla de tu imagen
 metas = [
-    {"actividad": "Operativos interinstitucionales nocturnos",        "meta_total": 24},
-    {"actividad": "Operativos presenciales nocturnos",                "meta_total": 184},
-    {"actividad": "Gestión institucional (oficios)",                  "meta_total": 1},
-    {"actividad": "Actividades cívico-policiales",                    "meta_total": 6},
-    {"actividad": "Operativos mixtos nocturnos",                      "meta_total": 184},
-    {"actividad": "Operativos interinstitucionales (control)",        "meta_total": 12},
-    {"actividad": "Acciones preventivas en espacios públicos",        "meta_total": 12},
-    {"actividad": "Talleres/capacitaciones seguridad comercial",      "meta_total": 1},
-    {"actividad": "Operativos con análisis de inteligencia",          "meta_total": 6},
-    {"actividad": "Capacitaciones de Seguridad Comunitaria",          "meta_total": 1},
+    {"fila": 1,  "actividad": "Operativos interinstitucionales nocturnos",        "meta_total": 24},
+    {"fila": 2,  "actividad": "Operativos presenciales nocturnos",                "meta_total": 184},
+    {"fila": 3,  "actividad": "Gestión institucional (oficios)",                  "meta_total": 1},
+    {"fila": 4,  "actividad": "Actividades cívico-policiales",                    "meta_total": 6},
+    {"fila": 5,  "actividad": "Operativos mixtos nocturnos",                      "meta_total": 184},
+    {"fila": 6,  "actividad": "Operativos interinstitucionales (control)",        "meta_total": 12},
+    {"fila": 7,  "actividad": "Acciones preventivas en espacios públicos",        "meta_total": 12},
+    {"fila": 8,  "actividad": "Talleres/capacitaciones seguridad comercial",      "meta_total": 1},
+    {"fila": 9,  "actividad": "Operativos con análisis de inteligencia",          "meta_total": 6},
+    {"fila": 10, "actividad": "Capacitaciones de Seguridad Comunitaria",          "meta_total": 1},
 ]
 
 df = pd.DataFrame(metas)
