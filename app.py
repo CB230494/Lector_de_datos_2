@@ -22,32 +22,36 @@ df = pd.DataFrame(metas)
 
 st.markdown("Ingresa el **avance acumulado** de cada meta (número de acciones realizadas):")
 
-# Captura de avances por cada fila
+# Controles sin la palabra "Fila"
 avances = []
 for _, r in df.iterrows():
     avance = st.number_input(
-        f"Fila {int(r.fila)} — {r.actividad}",
+        f"{r.actividad}",
         min_value=0, max_value=int(r.meta_total), step=1, value=0, key=f"av_{int(r.fila)}"
     )
     avances.append(avance)
 
+# Cálculos
 df["avance"] = avances
 df["pendiente"] = (df["meta_total"] - df["avance"]).clip(lower=0)
-df["porcentaje"] = ((df["avance"] / df["meta_total"]) * 100).round(1)
-df["estado"] = df["porcentaje"].apply(lambda x: "Completa" if x >= 100 else ("En curso" if x > 0 else "Pendiente"))
+df["porcentaje_num"] = ((df["avance"] / df["meta_total"]) * 100).round(1)  # numérico para métricas
+df["porcentaje"] = df["porcentaje_num"].map(lambda x: f"{x:.1f}%")        # texto con signo %
+df["estado"] = df["porcentaje_num"].apply(lambda x: "Completa" if x >= 100 else ("En curso" if x > 0 else "Pendiente"))
 
+# Tabla sin la columna 'fila' y con porcentaje con %
 st.dataframe(
-    df[["fila", "actividad", "meta_total", "avance", "pendiente", "porcentaje", "estado"]],
+    df[["actividad", "meta_total", "avance", "pendiente", "porcentaje", "estado"]],
     use_container_width=True
 )
 
-# Métrica global
+# Métrica global (con %)
 avance_total_pct = (df["avance"].sum() / df["meta_total"].sum()) * 100 if df["meta_total"].sum() else 0
 st.metric("Avance total (todas las metas)", f"{avance_total_pct:.1f}%")
 
-# Descargar Excel con el desglose
+# Descargar Excel con el desglose (incluye porcentaje con %)
 buffer = BytesIO()
-df.to_excel(buffer, index=False)
+df_export = df[["actividad", "meta_total", "avance", "pendiente", "porcentaje", "estado"]].copy()
+df_export.to_excel(buffer, index=False)
 buffer.seek(0)
 st.download_button(
     "📥 Descargar desglose en Excel",
@@ -55,7 +59,5 @@ st.download_button(
     file_name="avance_por_meta.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
-
-
 
 
