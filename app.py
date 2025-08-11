@@ -8,21 +8,10 @@ st.set_page_config(page_title="Seguimiento de Actividades", layout="wide")
 
 DB_PATH = "actividades.db"
 
-# ================== PLANES PRE-CARGADOS (editables) ==================
+# ============== PLANES PRE-CARGADOS (AJUSTA AQUÍ TU LISTA EXACTA) ==============
+# IMPORTANTE: deja solo las filas que realmente existen en tu plan maestro (sin duplicarlas).
 SEED_PLANES = [
-    # --- Ejemplos basados en tu Excel/imagenes (puedes ajustar o ampliar) ---
-    {
-        "sector": "Santa Cruz",
-        "indole": "Preventivo",
-        "actividad_estrategica": "Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.",
-        "indicador": "Cantidad de actividades preventivas realizadas",
-        "meta_total": 6,
-        "responsable": "Director Regional",
-        "actores": "Fuerza Pública",
-        "zona_trabajo": "Santa Cruz",
-        "fecha_inicio": None,
-        "fecha_fin": None,
-    },
+    # ---- EJEMPLOS (puedes reemplazar/ajustar sin duplicar) ----
     {
         "sector": "Santa Teresa",
         "indole": "Operativo",
@@ -36,9 +25,21 @@ SEED_PLANES = [
         "fecha_fin": None,
     },
     {
+        "sector": "Santa Cruz",
+        "indole": "Preventivo",
+        "actividad_estrategica": "Charlas preventivas y acercamiento comunitario para fortalecer conductas seguras y la convivencia.",
+        "indicador": "Cantidad de actividades preventivas realizadas",
+        "meta_total": 6,
+        "responsable": "Director Regional",
+        "actores": "Fuerza Pública",
+        "zona_trabajo": "Santa Cruz",
+        "fecha_inicio": None,
+        "fecha_fin": None,
+    },
+    {
         "sector": "Tamarindo",
         "indole": "Operativo",
-        "actividad_estrategica": "Despliegue de operativos presenciales en horarios nocturnos para reforzar vigilancia, disuasión del delito y presencia institucional.",
+        "actividad_estrategica": "Despliegue de operativos nocturnos en puntos de interés para reforzar vigilancia y disuasión del delito.",
         "indicador": "Operativos",
         "meta_total": 184,
         "responsable": "Jefe de delegación policial de Santa Cruz",
@@ -47,16 +48,17 @@ SEED_PLANES = [
         "fecha_inicio": None,
         "fecha_fin": None,
     },
+    # ---- Agrega aquí el resto de tus planes ÚNICOS tal como están en tu Excel ----
 ]
-# =====================================================================
+# ================================================================================
 
-# ================== DB ==================
+# ============== DB ==============
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
-def init_db_and_seed():
+def init_db():
     conn = get_conn()
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS planes (
@@ -70,7 +72,8 @@ def init_db_and_seed():
         actores TEXT NOT NULL,
         zona_trabajo TEXT NOT NULL,
         fecha_inicio TEXT,
-        fecha_fin TEXT
+        fecha_fin TEXT,
+        UNIQUE (sector, indole, indicador, actividad_estrategica, zona_trabajo)
     );
     CREATE TABLE IF NOT EXISTS avances (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,28 +85,31 @@ def init_db_and_seed():
         FOREIGN KEY(plan_id) REFERENCES planes(id) ON DELETE CASCADE
     );
     """)
-    # seed si no hay planes
+    conn.commit()
+
+    # Seed: insertar solo si la tabla está vacía; evitar duplicados por UNIQUE
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM planes;")
     if cur.fetchone()[0] == 0 and SEED_PLANES:
         cur.executemany("""
-            INSERT INTO planes (sector, indole, actividad_estrategica, indicador, meta_total, responsable, actores, zona_trabajo, fecha_inicio, fecha_fin)
+            INSERT OR IGNORE INTO planes
+            (sector, indole, actividad_estrategica, indicador, meta_total, responsable, actores, zona_trabajo, fecha_inicio, fecha_fin)
             VALUES (:sector, :indole, :actividad_estrategica, :indicador, :meta_total, :responsable, :actores, :zona_trabajo, :fecha_inicio, :fecha_fin)
         """, SEED_PLANES)
         conn.commit()
     conn.close()
 
-init_db_and_seed()
+init_db()
 
-# ================== Helpers ==================
+# ============== Helpers ==============
 def fetch_planes(sector=None):
     conn = get_conn()
     if sector and sector != "Todos":
         df = pd.read_sql_query(
-            "SELECT * FROM planes WHERE sector = ? ORDER BY id DESC", conn, params=(sector,)
+            "SELECT * FROM planes WHERE sector = ? ORDER BY id", conn, params=(sector,)
         )
     else:
-        df = pd.read_sql_query("SELECT * FROM planes ORDER BY id DESC", conn)
+        df = pd.read_sql_query("SELECT * FROM planes ORDER BY id", conn)
     conn.close()
     return df
 
@@ -122,10 +128,10 @@ def insertar_avance(plan_id: int, cantidad: int, fecha_reg: date, obs: str, usua
     conn.commit()
     conn.close()
 
-# ================== UI ==================
+# ============== UI ==============
 st.title("📋 Registro de avances")
 
-# Filtros de sector en un selector corto
+# Filtro de sector (no crear filas nuevas ni repetir)
 conn = get_conn()
 sectores_db = pd.read_sql_query("SELECT DISTINCT sector FROM planes ORDER BY sector", conn)
 conn.close()
@@ -139,21 +145,14 @@ if df_planes.empty:
     st.info("No hay planes creados.")
     st.stop()
 
-# Tabla ordenada de planes (sin la línea larguísima)
+# Tabla de planes (una fila por plan, tal cual)
 st.markdown("### 📑 Planes disponibles")
-tabla = df_planes[["id", "sector", "indicador", "meta_total", "responsable", "zona_trabajo"]].rename(
-    columns={
-        "id": "ID",
-        "sector": "Sector",
-        "indicador": "Indicador",
-        "meta_total": "Meta",
-        "responsable": "Responsable",
-        "zona_trabajo": "Zona(s) de trabajo",
-    }
-)
+tabla = df_planes[["id","sector","indicador","meta_total","responsable","zona_trabajo"]].rename(columns={
+    "id":"ID","sector":"Sector","indicador":"Indicador","meta_total":"Meta","responsable":"Responsable","zona_trabajo":"Zona(s) de trabajo"
+})
 st.dataframe(tabla, use_container_width=True, hide_index=True)
 
-# Selector por ID (compacto y claro)
+# Selección compacta por ID
 ids = df_planes["id"].tolist()
 plan_id = col_f2.selectbox(
     "Selecciona un plan por ID",
@@ -176,7 +175,7 @@ m3.metric("Restante", max(0, meta - acumulado))
 m4.metric("% Avance", f"{porcentaje}%")
 st.progress(int(porcentaje))
 
-# Detalles del plan (presentación limpia, no como dict/código)
+# Detalles limpios (no en bloque de código)
 st.markdown("### 🧾 Detalles del plan")
 d1, d2 = st.columns(2)
 with d1:
@@ -189,10 +188,11 @@ with d2:
     st.markdown(f"**Zona(s) de trabajo:** {plan['zona_trabajo']}")
     periodo = f"{plan['fecha_inicio'] or ''} - {plan['fecha_fin'] or ''}"
     st.markdown(f"**Periodo:** {periodo}")
+
 st.markdown("**Actividad estratégica:**")
 st.write(plan["actividad_estrategica"])
 
-# Registrar avance
+# Registro de avances (sin permitir superar meta)
 st.markdown("### ➕ Registrar avance")
 c1, c2, c3 = st.columns([1, 1, 2])
 cantidad = c1.number_input("Cantidad realizada", min_value=1, value=1, step=1)
@@ -200,14 +200,13 @@ fecha_reg = c2.date_input("Fecha", value=date.today())
 usuario = c3.text_input("Registrado por (opcional)")
 obs = st.text_area("Observaciones (opcional)")
 
-# Validación simple: no exceder meta (opcional, puedes comentar si no lo quieres)
 if acumulado + cantidad > meta:
     st.warning(f"Este registro superaría la meta ({acumulado}+{cantidad} > {meta}). Ajusta la cantidad.")
 
-if st.button("Guardar avance", type="primary", use_container_width=False):
+if st.button("Guardar avance", type="primary"):
     try:
         if acumulado + cantidad > meta:
-            st.error("No se guardó porque sobrepasa la meta. Corrige la cantidad.")
+            st.error("No se guardó porque sobrepasa la meta.")
         else:
             insertar_avance(int(plan["id"]), cantidad, fecha_reg, obs, usuario)
             st.success("Avance registrado ✅")
@@ -215,14 +214,13 @@ if st.button("Guardar avance", type="primary", use_container_width=False):
     except Exception as e:
         st.error(f"Error al guardar: {e}")
 
-# Historial del plan
-st.markdown("### 🧾 Historial reciente")
+# Historial
+st.markdown("### 🧾 Historial del plan")
 conn = get_conn()
 hist = pd.read_sql_query(
-    "SELECT fecha, cantidad, registrado_por AS usuario, observaciones FROM avances WHERE plan_id = ? ORDER BY id DESC LIMIT 50",
+    "SELECT fecha, cantidad, registrado_por AS usuario, observaciones FROM avances WHERE plan_id = ? ORDER BY id DESC",
     conn, params=(int(plan["id"]),),
 )
 conn.close()
 st.dataframe(hist, use_container_width=True, hide_index=True)
-
 
