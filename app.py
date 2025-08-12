@@ -5,8 +5,10 @@ from datetime import datetime
 import sqlite3
 
 # ===== Conexión existente =====
-CONN = sqlite3.connect("avances.db", check_same_thread=False)
+DB_PATH = r"C:\Users\Usuario\Desktop\Proyectos\Seguimiento Planes\avances.db"  # <- tu archivo real
+CONN = sqlite3.connect(DB_PATH, check_same_thread=False)
 CONN.execute("PRAGMA foreign_keys = ON")
+
 
 # ===== Helpers de BD =====
 def db_insert_mov(fila, fecha, cantidad, delta, nota):
@@ -394,6 +396,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
