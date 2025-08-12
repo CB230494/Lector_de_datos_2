@@ -166,7 +166,7 @@ metas = [
 ]
 df_base = pd.DataFrame(metas)
 
-# >>> Bootstrap de esquema y metas (clave para evitar el OperationalError)
+# >>> Bootstrap de esquema y metas
 ensure_schema(CONN, metas)
 
 # ---- Inicializar estado ----
@@ -394,6 +394,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
