@@ -3,8 +3,45 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 import sqlite3
+
+# ===== Conexión existente (sin cambios) =====
 CONN = sqlite3.connect("avances.db", check_same_thread=False)
 CONN.execute("PRAGMA foreign_keys = ON")
+
+# ===== Helpers de BD (añadidos mínimos) =====
+def db_insert_mov(fila, fecha, cantidad, delta, nota):
+    cur = CONN.cursor()
+    cur.execute(
+        "INSERT INTO movimientos (fila, fecha, cantidad, delta, nota) VALUES (?,?,?,?,?)",
+        (int(fila), fecha, int(cantidad), int(delta), nota),
+    )
+    CONN.commit()
+    return cur.lastrowid
+
+def db_update_mov(mov_id, cantidad, delta, nota):
+    cur = CONN.cursor()
+    cur.execute(
+        "UPDATE movimientos SET cantidad=?, delta=?, nota=? WHERE id=?",
+        (int(cantidad), int(delta), nota, int(mov_id)),
+    )
+    CONN.commit()
+
+def db_delete_mov(mov_id):
+    cur = CONN.cursor()
+    cur.execute("DELETE FROM movimientos WHERE id=?", (int(mov_id),))
+    CONN.commit()
+
+def db_load_hist(fila):
+    cur = CONN.cursor()
+    cur.execute(
+        "SELECT id, fecha, cantidad, delta, nota FROM movimientos WHERE fila=? ORDER BY id",
+        (int(fila),)
+    )
+    rows = cur.fetchall()
+    return [
+        {"fecha": r[1], "cantidad": int(r[2]), "nota": r[4] or "", "delta": int(r[3]), "db_id": int(r[0])}
+        for r in rows
+    ]
 
 st.subheader("📈 Avances por meta")
 
@@ -29,13 +66,27 @@ for _, r in df_base.iterrows():
     st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))   # meta original
     st.session_state.setdefault(f"avance_{f}", 0)                       # acumulado
     st.session_state.setdefault(f"restante_{f}", int(r.meta_total))     # restante
-    # historial: [{fecha(dd-mm-YYYY), cantidad, nota, delta}]
+    # historial: [{fecha(dd-mm-YYYY), cantidad, nota, delta, db_id}]
     st.session_state.setdefault(f"hist_{f}", [])
     st.session_state.setdefault(f"mov_val_{f}", 0)                      # input movimiento (número)
     st.session_state.setdefault(f"nota_inline_{f}", "")                 # nota del movimiento
     st.session_state.setdefault(f"reset_mov_{f}", False)                # flag para limpiar a 0
 
-
+# ---- Cargar historial desde BD (una sola vez por fila) ----
+st.session_state.setdefault("loaded_from_db", {})
+for _, r in df_base.iterrows():
+    f = int(r.fila)
+    if not st.session_state["loaded_from_db"].get(f, False):
+        hist_db = db_load_hist(f)
+        if hist_db:
+            st.session_state[f"hist_{f}"] = hist_db
+            # Recalcular avance y restante a partir de la BD (respetando 0..meta_total)
+            meta_total = st.session_state[f"meta_total_{f}"]
+            suma = sum(i["delta"] for i in hist_db)
+            avance_clamped = max(0, min(meta_total, suma))
+            st.session_state[f"avance_{f}"] = avance_clamped
+            st.session_state[f"restante_{f}"] = meta_total - avance_clamped
+        st.session_state["loaded_from_db"][f] = True
 
 # ---- UI por fila (manejo de reset ANTES de crear el widget) ----
 for _, r in df_base.iterrows():
@@ -86,12 +137,16 @@ for _, r in df_base.iterrows():
             nota_mov = (st.session_state[f"nota_inline_{f}"] or "").strip()
             cantidad = abs(int(delta_real))
             if nota_mov or cantidad > 0:
-                st.session_state[f"hist_{f}"].append({
+                item = {
                     "fecha": datetime.now().strftime("%d-%m-%Y"),
                     "cantidad": int(cantidad),
                     "nota": nota_mov,
                     "delta": int(delta_real),
-                })
+                }
+                # Persistir en BD y guardar el id
+                new_id = db_insert_mov(f, item["fecha"], item["cantidad"], item["delta"], item["nota"])
+                item["db_id"] = new_id
+                st.session_state[f"hist_{f}"].append(item)
 
             # marcar reset para limpiar a 0 y forzar rerun (refresca métrica)
             st.session_state[f"reset_mov_{f}"] = True
@@ -195,6 +250,11 @@ for _, r in df.iterrows():
                             item["nota"] = nueva_nota
                             item["delta"] = int(new_delta)
 
+                            # Persistir edición en BD si hay id
+                            mov_id = item.get("db_id", None)
+                            if mov_id:
+                                db_update_mov(mov_id, nueva_cant, new_delta, nueva_nota)
+
                             st.rerun()
 
                         # Eliminar registro
@@ -205,6 +265,11 @@ for _, r in df.iterrows():
                             new_avance = max(0, min(meta_total, st.session_state[f"avance_{f}"] - old_delta))
                             st.session_state[f"avance_{f}"] = new_avance
                             st.session_state[f"restante_{f}"] = meta_total - new_avance
+
+                            # Borrar en BD si existe id
+                            mov_id = item.get("db_id", None)
+                            if mov_id:
+                                db_delete_mov(mov_id)
 
                             # Quitar del historial
                             del st.session_state[f"hist_{f}"][i]
