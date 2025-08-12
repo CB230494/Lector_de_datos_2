@@ -3,7 +3,7 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 
-st.subheader("📈 Avances por meta (movimientos con − / + y notas con fecha)")
+st.subheader("📈 Avances por meta")
 
 # ---- Metas base (meta_total original) ----
 metas = [
@@ -32,11 +32,7 @@ for _, r in df_base.iterrows():
     st.session_state.setdefault(f"nota_inline_{f}", "")                 # nota del movimiento
     st.session_state.setdefault(f"reset_mov_{f}", False)                # flag para limpiar a 0
 
-st.markdown(
-    "Usa los botones **− / +** para ajustar el **Movimiento**. "
-    "Al **guardar**, se aplica al acumulado, se actualiza el **límite restante** y el campo vuelve a **0**. "
-    "La *Cantidad* se registra automáticamente como **|movimiento aplicado|**."
-)
+
 
 # ---- UI por fila (manejo de reset ANTES de crear el widget) ----
 for _, r in df_base.iterrows():
@@ -243,6 +239,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
