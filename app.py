@@ -372,7 +372,7 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
 # =========================
-# 9) 📊 Visualizaciones por meta (uno por uno, azul/rojo, con sombreado)
+# 9) 📊 Visualizaciones por meta (ocultas hasta seleccionar)
 # =========================
 st.markdown("### 📊 Visualizaciones por meta (uno por uno)")
 
@@ -382,20 +382,6 @@ import numpy as np
 # Colores vivos
 BLUE = "#1E88E5"   # azul intenso
 RED  = "#E53935"   # rojo intenso
-
-# Selector de meta (una a la vez)
-_df_opts = df[["fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje_val"]].copy()
-_df_opts["op"] = _df_opts["fila"].astype(str) + " — " + _df_opts["actividad"]
-sel = st.selectbox("Elegí la meta a visualizar", _df_opts["op"].tolist(), index=0, key="sel_meta_uno")
-fila_sel = int(_df_opts.loc[_df_opts["op"] == sel, "fila"].iloc[0])
-row_sel = df.loc[df["fila"] == fila_sel].iloc[0]
-
-meta = int(row_sel["meta_total"])
-avance = int(row_sel["avance"])
-restante = max(0, meta - avance)
-pct = float(row_sel["porcentaje_val"])  # 1 decimal
-
-tipo = st.radio("Tipo de gráfico", ["Barras", "Circular"], index=0, horizontal=True, key="tipo_uno_por_uno")
 
 def _prep_fig():
     # Tema oscuro
@@ -409,66 +395,86 @@ def _prep_fig():
     ax.grid(axis="y", alpha=0.15, color="white")
     return fig, ax
 
-if tipo == "Barras":
-    fig, ax = _prep_fig()
-    vals = [avance, restante]
-    labels = ["Avance", "Restante"]
-    x = np.arange(len(labels))
-    width = 0.6
+# Opciones de metas
+_df_opts = df[["fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje_val"]].copy()
+_df_opts["op"] = _df_opts["fila"].astype(str) + " — " + _df_opts["actividad"]
+placeholder = "— Selecciona una meta —"
+options = [placeholder] + _df_opts["op"].tolist()
 
-    # Sombra (ligero desplazamiento)
-    ax.bar(x + 0.03, vals, width=width, color="black", alpha=0.35, zorder=0)
+sel = st.selectbox("Elegí la meta a visualizar", options, index=0, key="sel_meta_uno")
 
-    # Barras principales azul/rojo con borde blanco
-    bars = ax.bar(
-        x, vals, width=width, color=[BLUE, RED], alpha=0.95,
-        edgecolor="white", linewidth=1.2, zorder=1
-    )
-    y_max = max(meta, max(vals), 1)
-    ax.set_ylim(0, y_max * 1.15)
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, color="white")
-    ax.set_ylabel("Cantidad", color="white")
-    ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
+# Si no hay selección válida, no mostramos nada
+if sel == placeholder:
+    st.info("Seleccioná una meta para mostrar el gráfico.")
+else:
+    fila_sel = int(_df_opts.loc[_df_opts["op"] == sel, "fila"].iloc[0])
+    row_sel = df.loc[df["fila"] == fila_sel].iloc[0]
 
-    # Etiquetas (valor y % real con 1 decimal)
-    for b, val in zip(bars, vals):
-        perc = (val / meta * 100) if meta else 0.0
-        ax.text(
-            b.get_x() + b.get_width()/2, b.get_height() + (y_max * 0.03),
-            f"{val}  ({perc:.1f}%)", ha="center", va="bottom", color="white", fontsize=10
+    meta = int(row_sel["meta_total"])
+    avance = int(row_sel["avance"])
+    restante = max(0, meta - avance)
+    pct = float(row_sel["porcentaje_val"])  # 1 decimal
+
+    tipo = st.radio("Tipo de gráfico", ["Barras", "Circular"], index=0, horizontal=True, key="tipo_uno_por_uno")
+
+    if tipo == "Barras":
+        fig, ax = _prep_fig()
+        vals = [avance, restante]
+        labels = ["Avance", "Restante"]
+        x = np.arange(len(labels))
+        width = 0.6
+
+        # Sombra
+        ax.bar(x + 0.03, vals, width=width, color="black", alpha=0.35, zorder=0)
+
+        # Barras principales azul/rojo con borde blanco
+        bars = ax.bar(
+            x, vals, width=width, color=[BLUE, RED], alpha=0.95,
+            edgecolor="white", linewidth=1.2, zorder=1
         )
+        y_max = max(meta, max(vals), 1)
+        ax.set_ylim(0, y_max * 1.15)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, color="white")
+        ax.set_ylabel("Cantidad", color="white")
+        ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
 
-    st.pyplot(fig, clear_figure=True)
+        # Etiquetas (valor y % real con 1 decimal)
+        for b, val in zip(bars, vals):
+            perc = (val / meta * 100) if meta else 0.0
+            ax.text(
+                b.get_x() + b.get_width()/2, b.get_height() + (y_max * 0.03),
+                f"{val}  ({perc:.1f}%)", ha="center", va="bottom", color="white", fontsize=10
+            )
 
-elif tipo == "Circular":
-    fig, ax = _prep_fig()
-    datos = [max(avance, 0), max(restante, 0)]
-    etiquetas = ["Avance", "Restante"]
+        st.pyplot(fig, clear_figure=True)
 
-    if sum(datos) == 0:
-        datos, etiquetas = [1], ["Sin datos"]
+    elif tipo == "Circular":
+        fig, ax = _prep_fig()
+        datos = [max(avance, 0), max(restante, 0)]
+        etiquetas = ["Avance", "Restante"]
 
-    def autopct_fmt(p):
-        return f"{p:.1f}%"
+        if sum(datos) == 0:
+            datos, etiquetas = [1], ["Sin datos"]
 
-    wedges, texts, autotexts = ax.pie(
-        datos,
-        labels=etiquetas,
-        autopct=autopct_fmt,
-        startangle=90,
-        colors=[BLUE, RED],
-        shadow=True,  # sombreado
-        wedgeprops=dict(edgecolor="white", linewidth=1.2)
-    )
-    for t in texts + autotexts:
-        t.set_color("white")
-    ax.axis("equal")
-    ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
+        def autopct_fmt(p):
+            return f"{p:.1f}%"
 
-    st.pyplot(fig, clear_figure=True)
+        wedges, texts, autotexts = ax.pie(
+            datos,
+            labels=etiquetas,
+            autopct=autopct_fmt,
+            startangle=90,
+            colors=[BLUE, RED],
+            shadow=True,  # sombreado
+            wedgeprops=dict(edgecolor="white", linewidth=1.2)
+        )
+        for t in texts + autotexts:
+            t.set_color("white")
+        ax.axis("equal")
+        ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
 
-
+        st.pyplot(fig, clear_figure=True)
 
 
 
