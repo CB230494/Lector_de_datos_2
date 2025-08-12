@@ -467,27 +467,80 @@ pct_total = (avance_total / meta_total_sum) * 100 if meta_total_sum else 0
 st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 
 # =========================
-# 8) DESCARGAR EXCEL
+# 8) DESCARGAR EXCEL (multi-hoja, sin 'delta', con estilos)
 # =========================
-buffer = BytesIO()
-hist_texts = []
-for _, r in df.iterrows():
-    f = int(r["fila"])
-    h = obtener_historial(f)
-    hist_texts.append("; ".join([f"{i.get('fecha','')} — {i.get('cantidad',0)} — {i.get('nota','')}" for i in h]))
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
-df_export = df[[
+buffer = BytesIO()
+
+# --- Hoja RESUMEN (mantenemos columnas + contexto como en tu export previo) ---
+df_resumen = df[[
     "fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"
 ]].copy()
 
-# Añadimos columnas de contexto para el Excel
+# Contexto
 ctx = obtener_metas_df().set_index("fila")
 for col in ["indole", "zona_trabajo", "actores", "indicador_actividad",
             "consideraciones", "periodicidad", "responsable", "efecto_esperado"]:
-    df_export[col] = df_export["fila"].map(ctx[col])
+    df_resumen[col] = df_resumen["fila"].map(ctx[col])
 
-df_export["historial"] = hist_texts
-df_export.to_excel(buffer, index=False)
+# --- Hoja HISTORIAL (una fila por movimiento, SIN delta) ---
+hist_rows = []
+for _, r in df.iterrows():
+    f = int(r["fila"])
+    actividad = r["actividad"]
+    for m in obtener_historial(f):
+        hist_rows.append({
+            "fila": f,
+            "actividad": actividad,
+            "fecha": m.get("fecha", ""),
+            "cantidad": int(m.get("cantidad", 0)),
+            "nota": m.get("nota", ""),
+        })
+df_hist = pd.DataFrame(hist_rows)
+
+# --- Hoja RESPALDO (solo notas no vacías) ---
+if not df_hist.empty:
+    df_respaldo = df_hist[df_hist["nota"].astype(str).str.strip() != ""].loc[:, ["fila", "actividad", "fecha", "nota"]].copy()
+else:
+    df_respaldo = pd.DataFrame(columns=["fila", "actividad", "fecha", "nota"])
+
+def estilizar_hoja(ws, hex_tab):
+    # color pestaña
+    ws.sheet_properties.tabColor = hex_tab
+    # estilo encabezado
+    header_fill = PatternFill("solid", fgColor="1E88E5")
+    header_font = Font(color="FFFFFF", bold=True)
+    align_center = Alignment(horizontal="center", vertical="center")
+    thin = Side(border_style="thin", color="D0D0D0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for col in range(1, ws.max_column + 1):
+        c = ws.cell(row=1, column=col)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = align_center
+        c.border = border
+        letter = get_column_letter(col)
+        ws.column_dimensions[letter].width = max(12, min(60, len(str(c.value)) + 6))
+    ws.freeze_panes = "A2"
+
+with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+    df_resumen.to_excel(writer, index=False, sheet_name="Resumen")
+    if not df_hist.empty:
+        df_hist.to_excel(writer, index=False, sheet_name="Historial")
+    if not df_respaldo.empty:
+        df_respaldo.to_excel(writer, index=False, sheet_name="Respaldo (notas)")
+
+    # estilos
+    if "Resumen" in writer.sheets:
+        estilizar_hoja(writer.sheets["Resumen"], "1E88E5")     # azul
+    if "Historial" in writer.sheets:
+        estilizar_hoja(writer.sheets["Historial"], "E53935")   # rojo
+    if "Respaldo (notas)" in writer.sheets:
+        estilizar_hoja(writer.sheets["Respaldo (notas)"], "43A047")  # verde
+
 buffer.seek(0)
 st.download_button(
     "📥 Descargar desglose en Excel",
