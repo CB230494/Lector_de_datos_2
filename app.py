@@ -14,17 +14,141 @@ st.subheader("📈 Avances por meta")
 # =========================
 DB_PATH = "avances.db"
 
-METAS_BASE = [
-    {"fila": 1,  "actividad": "Operativos interinstitucionales nocturnos",        "meta_total": 24},
-    {"fila": 2,  "actividad": "Operativos presenciales nocturnos",                "meta_total": 184},
-    {"fila": 3,  "actividad": "Gestión institucional (oficios)",                  "meta_total": 1},
-    {"fila": 4,  "actividad": "Actividades cívico-policiales",                    "meta_total": 6},
-    {"fila": 5,  "actividad": "Operativos mixtos nocturnos",                      "meta_total": 184},
-    {"fila": 6,  "actividad": "Operativos interinstitucionales (control)",        "meta_total": 12},
-    {"fila": 7,  "actividad": "Acciones preventivas en espacios públicos",        "meta_total": 12},
-    {"fila": 8,  "actividad": "Talleres/capacitaciones seguridad comercial",      "meta_total": 1},
-    {"fila": 9,  "actividad": "Operativos con análisis de inteligencia",          "meta_total": 6},
-    {"fila": 10, "actividad": "Capacitaciones de Seguridad Comunitaria",          "meta_total": 1},
+# === PLAN BASE (Matriz Tamarindo / Santa Cruz) ===
+# Mapeo:
+# - actividad_estrategica -> actividad (para mostrar)
+# - meta_cuantitativa     -> meta_total (para cálculos)
+PLAN_BASE = [
+    {
+        "fila": 1,
+        "indole": "Operativo",
+        "actividad_estrategica": "Coordinación y ejecución de operativos interinstitucionales nocturnos con enfoque en objetivos estratégicos dentro del área de intervención.",
+        "zona_trabajo": "Tamarindo, Villarreal, Flamingo, Brasilito, Potrero y Surfside",
+        "actores": "Fuerza Pública; Policía de Tránsito; Policía de Migración; Policía Turística; DIAC",
+        "indicador_actividad": "Cantidad de operativos policiales",
+        "consideraciones": "1) Reforzar personal DIAC; 2) Presencia de unidad K9; 3) Ubicación aleatoria según análisis previo; 4) Operativos prolongados.",
+        "periodicidad": "Semanal",
+        "meta_cuantitativa": 24,
+        "responsable": "Sub Director Regional",
+        "efecto_esperado": "Reducción de actividades ilícitas y fortalecimiento de la presencia institucional en horarios de mayor riesgo."
+    },
+    {
+        "fila": 2,
+        "indole": "Operativo",
+        "actividad_estrategica": "Despliegue de operativos presenciales en horarios nocturnos en zonas previamente identificadas como puntos de interés para reforzar vigilancia y disuasión del delito.",
+        "zona_trabajo": "Tamarindo",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de operativos policiales",
+        "consideraciones": "1) Apoyo constante de ≥12 funcionarios de gestión; 2) Disponer de al menos una unidad policial adicional (recurso móvil).",
+        "periodicidad": "Diario",
+        "meta_cuantitativa": 184,
+        "responsable": "Jefe de delegación policial de Santa Cruz",
+        "efecto_esperado": "Aumento de la percepción policial en puntos críticos mediante presencia visible."
+    },
+    {
+        "fila": 3,
+        "indole": "Gestión administrativa",
+        "actividad_estrategica": "Gestión institucional mediante oficio para la asignación de recurso humano y transporte policial necesario para garantizar cobertura operativa diaria en zonas de interés.",
+        "zona_trabajo": "Santa Cruz",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de oficios emitidos",
+        "consideraciones": "N/A",
+        "periodicidad": "Semestral",
+        "meta_cuantitativa": 1,
+        "responsable": "Director Regional",
+        "efecto_esperado": "Asegurar presencia policial continua y eficaz mediante dotación oportuna de personal y medios logísticos."
+    },
+    {
+        "fila": 4,
+        "indole": "Preventivo",
+        "actividad_estrategica": "Ejecución de actividades cívico-policiales en espacios públicos y centros educativos para fortalecer vínculos comunitarios, cultura de paz y convivencia.",
+        "zona_trabajo": "Villarreal",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de cívicos policiales",
+        "consideraciones": "N/A",
+        "periodicidad": "Mensual",
+        "meta_cuantitativa": 6,
+        "responsable": "Director Regional",
+        "efecto_esperado": "Fortalecer vínculo comunidad–Fuerza Pública, promoviendo prevención y convivencia."
+    },
+    {
+        "fila": 5,
+        "indole": "Operativo",
+        "actividad_estrategica": "Despliegue de operativos presenciales en horarios mixtos en zonas previamente identificadas como puntos de interés para reforzar vigilancia y disuasión del delito.",
+        "zona_trabajo": "Flamingo",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de operativos policiales",
+        "consideraciones": "1) Apoyo constante de ≥12 funcionarios; 2) Unidad policial adicional (recurso móvil) para asegurar cobertura.",
+        "periodicidad": "Diario",
+        "meta_cuantitativa": 184,
+        "responsable": "Jefe de delegación policial de Santa Cruz",
+        "efecto_esperado": "Aumento de la percepción policial en puntos críticos con presencia visible."
+    },
+    {
+        "fila": 6,
+        "indole": "Operativo",
+        "actividad_estrategica": "Operativos interinstitucionales de control para regular ventas informales y actividades no autorizadas de cobro de parqueo en zona costera.",
+        "zona_trabajo": "Flamingo y Brasilito",
+        "actores": "Fuerza Pública; Policía de Tránsito; Policía de Migración; Policía Turística; DIAC",
+        "indicador_actividad": "Cantidad de operativos policiales",
+        "consideraciones": "1) Apoyo constante de ≥12 funcionarios; 2) Unidad policial adicional (recurso móvil).",
+        "periodicidad": "Quincenal",
+        "meta_cuantitativa": 12,
+        "responsable": "Jefe de delegación policial de Santa Cruz",
+        "efecto_esperado": "Recuperar orden en espacio público, reducir informalidad y brindar condiciones seguras y reguladas."
+    },
+    {
+        "fila": 7,
+        "indole": "Preventivo",
+        "actividad_estrategica": "Implementación de acciones preventivas orientadas a la recuperación y apropiación positiva de espacios públicos.",
+        "zona_trabajo": "Brasilito",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de acciones preventivas",
+        "consideraciones": "N/A",
+        "periodicidad": "Quincenal",
+        "meta_cuantitativa": 12,
+        "responsable": "Director Regional",
+        "efecto_esperado": "Transformar espacios públicos en entornos seguros y activos, fomentando su uso positivo por la comunidad."
+    },
+    {
+        "fila": 8,
+        "indole": "Preventivo",
+        "actividad_estrategica": "Ejecución de talleres y jornadas en seguridad comercial para el sector empresarial.",
+        "zona_trabajo": "Brasilito",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de talleres",
+        "consideraciones": "N/A",
+        "periodicidad": "Semestral",
+        "meta_cuantitativa": 10,
+        "responsable": "Director Regional",
+        "efecto_esperado": "Mejorar percepción de seguridad y fortalecer la capacidad de prevención del delito en el sector comercial."
+    },
+    {
+        "fila": 9,
+        "indole": "Operativo",
+        "actividad_estrategica": "Operativos focalizados para identificar personas y vehículos vinculados a robos en vivienda y otros delitos, con soporte de análisis de inteligencia.",
+        "zona_trabajo": "Tamarindo",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de operativos policiales",
+        "consideraciones": "N/A",
+        "periodicidad": "Mensual",
+        "meta_cuantitativa": 6,
+        "responsable": "DIAC",
+        "efecto_esperado": "Reducir robos a vivienda mediante identificación oportuna de objetivos y fortalecimiento de la respuesta."
+    },
+    {
+        "fila": 10,
+        "indole": "Preventivo",
+        "actividad_estrategica": "Capacitaciones en Seguridad Comunitaria para líderes comunales y ciudadanía.",
+        "zona_trabajo": "Villarreal",
+        "actores": "Fuerza Pública",
+        "indicador_actividad": "Cantidad de capacitaciones",
+        "consideraciones": "N/A",
+        "periodicidad": "Semestral",
+        "meta_cuantitativa": 1,
+        "responsable": "Director Regional",
+        "efecto_esperado": "Mejorar conocimiento y capacidad de respuesta; vinculación con estrategias de seguridad comunitaria."
+    },
 ]
 
 def get_conn():
@@ -33,21 +157,50 @@ def get_conn():
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
 
+def _col_exists(cur, table, col):
+    cur.execute(f"PRAGMA table_info({table});")
+    cols = [r[1] for r in cur.fetchall()]
+    return col in cols
+
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
+    # Tabla metas con columnas extendidas (contexto de la matriz)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS metas (
             fila INTEGER PRIMARY KEY,
-            actividad TEXT NOT NULL,
-            meta_total INTEGER NOT NULL
+            actividad TEXT NOT NULL,      -- alias de actividad_estrategica
+            meta_total INTEGER NOT NULL,  -- alias de meta_cuantitativa
+            indole TEXT,
+            zona_trabajo TEXT,
+            actores TEXT,
+            indicador_actividad TEXT,
+            consideraciones TEXT,
+            periodicidad TEXT,
+            responsable TEXT,
+            efecto_esperado TEXT
         );
     """)
+    # Migraciones suaves si ya existía
+    needed = [
+        ("indole", "TEXT"),
+        ("zona_trabajo", "TEXT"),
+        ("actores", "TEXT"),
+        ("indicador_actividad", "TEXT"),
+        ("consideraciones", "TEXT"),
+        ("periodicidad", "TEXT"),
+        ("responsable", "TEXT"),
+        ("efecto_esperado", "TEXT"),
+    ]
+    for col, typ in needed:
+        if not _col_exists(cur, "metas", col):
+            cur.execute(f"ALTER TABLE metas ADD COLUMN {col} {typ};")
+
     cur.execute("""
         CREATE TABLE IF NOT EXISTS movimientos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fila INTEGER NOT NULL,
-            fecha TEXT NOT NULL,            -- formato DD-MM-YYYY
+            fecha TEXT NOT NULL,            -- DD-MM-YYYY
             cantidad INTEGER NOT NULL CHECK(cantidad >= 0),
             nota TEXT,
             delta INTEGER NOT NULL,         -- con signo
@@ -55,12 +208,35 @@ def init_db():
         );
     """)
     conn.commit()
-    # seed de metas si está vacío
+
+    # Seed si está vacío
     cur.execute("SELECT COUNT(*) FROM metas;")
     if cur.fetchone()[0] == 0:
         cur.executemany(
-            "INSERT INTO metas (fila, actividad, meta_total) VALUES (?, ?, ?);",
-            [(m["fila"], m["actividad"], m["meta_total"]) for m in METAS_BASE]
+            """
+            INSERT INTO metas
+            (fila, actividad, meta_total, indole, zona_trabajo, actores, indicador_actividad,
+             consideraciones, periodicidad, responsable, efecto_esperado)
+            VALUES
+            (:fila, :actividad, :meta_total, :indole, :zona_trabajo, :actores, :indicador_actividad,
+             :consideraciones, :periodicidad, :responsable, :efecto_esperado)
+            """,
+            [
+                {
+                    "fila": it["fila"],
+                    "actividad": it["actividad_estrategica"],
+                    "meta_total": int(it["meta_cuantitativa"] or 0),
+                    "indole": it.get("indole", ""),
+                    "zona_trabajo": it.get("zona_trabajo", ""),
+                    "actores": it.get("actores", ""),
+                    "indicador_actividad": it.get("indicador_actividad", ""),
+                    "consideraciones": it.get("consideraciones", ""),
+                    "periodicidad": it.get("periodicidad", ""),
+                    "responsable": it.get("responsable", ""),
+                    "efecto_esperado": it.get("efecto_esperado", ""),
+                }
+                for it in PLAN_BASE
+            ]
         )
         conn.commit()
     conn.close()
@@ -72,7 +248,13 @@ init_db()
 # =========================
 def obtener_metas_df() -> pd.DataFrame:
     conn = get_conn()
-    df = pd.read_sql_query("SELECT fila, actividad, meta_total FROM metas ORDER BY fila;", conn)
+    df = pd.read_sql_query("""
+        SELECT fila, actividad, meta_total,
+               indole, zona_trabajo, actores, indicador_actividad,
+               consideraciones, periodicidad, responsable, efecto_esperado
+        FROM metas
+        ORDER BY fila;
+    """, conn)
     conn.close()
     return df
 
@@ -109,19 +291,12 @@ def meta_total_de_fila(fila: int) -> int:
     return int(row[0]) if row else 0
 
 def insertar_movimiento(fila: int, mov: int, nota: str) -> bool:
-    """
-    Inserta un movimiento aplicando límites (0..meta_total).
-    Guarda delta_real (con signo) y cantidad (valor absoluto). Devuelve True si insertó.
-    """
     meta_total = meta_total_de_fila(fila)
     avance_actual = suma_delta_por_fila(fila)
     nuevo_avance = max(0, min(meta_total, avance_actual + int(mov)))
     delta_real = int(nuevo_avance - avance_actual)
-
     if delta_real == 0 and not (nota or "").strip():
-        # No hay efecto y no hay nota -> no guarda nada
         return False
-
     fecha = datetime.now().strftime("%d-%m-%Y")
     conn = get_conn()
     cur = conn.cursor()
@@ -134,10 +309,6 @@ def insertar_movimiento(fila: int, mov: int, nota: str) -> bool:
     return True
 
 def actualizar_movimiento(id_mov: int, fila: int, nueva_cant: int, nueva_nota: str):
-    """
-    Mantiene el signo original del movimiento. Recorta la cantidad para que
-    la suma total (incluyendo este movimiento) quede dentro de 0..meta_total.
-    """
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("SELECT delta FROM movimientos WHERE id=?;", (id_mov,))
@@ -147,19 +318,14 @@ def actualizar_movimiento(id_mov: int, fila: int, nueva_cant: int, nueva_nota: s
         return
     old_delta = int(row[0])
     sign = 1 if old_delta >= 0 else -1
-
-    # Avance sin contar este movimiento
     cur.execute("SELECT COALESCE(SUM(delta),0) FROM movimientos WHERE fila=? AND id<>?;", (fila, id_mov))
     avance_sin = int(cur.fetchone()[0] or 0)
-
     meta_total = meta_total_de_fila(fila)
     nuevo_delta_deseado = sign * int(nueva_cant)
-
-    min_allowed = -avance_sin                     # para no bajar de 0
-    max_allowed = meta_total - avance_sin         # para no pasar la meta
+    min_allowed = -avance_sin
+    max_allowed = meta_total - avance_sin
     nuevo_delta = max(min_allowed, min(max_allowed, nuevo_delta_deseado))
     nueva_cant_recortada = abs(int(nuevo_delta))
-
     cur.execute("""
         UPDATE movimientos
         SET cantidad = ?, nota = ?, delta = ?
@@ -177,7 +343,6 @@ def eliminar_movimiento(id_mov: int):
 
 def obtener_resumen_df() -> pd.DataFrame:
     metas = obtener_metas_df()
-    # Traer avances (sumas por fila)
     conn = get_conn()
     avances = pd.read_sql_query("""
         SELECT fila, COALESCE(SUM(delta),0) AS avance
@@ -185,7 +350,6 @@ def obtener_resumen_df() -> pd.DataFrame:
         GROUP BY fila;
     """, conn)
     conn.close()
-
     df = metas.merge(avances, on="fila", how="left").fillna({"avance": 0})
     df["avance"] = df["avance"].astype(int)
     df["limite_restante"] = df["meta_total"] - df["avance"]
@@ -222,13 +386,11 @@ for _, r in df_base.iterrows():
     f = int(r["fila"])
     ensure_ui_keys_for_fila(f)
 
-    # si se marcó reset en el ciclo anterior, limpiar antes de dibujar widgets
     if get_reset_flag(f):
         st.session_state[f"mov_val_{f}"] = 0
         st.session_state[f"nota_inline_{f}"] = ""
         set_reset_flag(f, False)
 
-    # datos actuales desde DB
     meta_total = int(r["meta_total"])
     avance = int(suma_delta_por_fila(f))
     restante = meta_total - avance
@@ -236,6 +398,7 @@ for _, r in df_base.iterrows():
     colA, colB = st.columns([2.2, 1])
     with colA:
         st.markdown(f"**{r['actividad']}**  \nMeta original: **{meta_total}**")
+        st.caption(f"Índole: {r['indole']} • Periodicidad: {r['periodicidad']} • Indicador: {r['indicador_actividad']}")
     with colB:
         st.metric("Límite restante", restante)
 
@@ -259,8 +422,7 @@ for _, r in df_base.iterrows():
         if st.button("Guardar movimiento", key=f"guardar_{f}"):
             mov = int(st.session_state[f"mov_val_{f}"])
             nota_mov = (st.session_state[f"nota_inline_{f}"] or "").strip()
-            inserted = insertar_movimiento(f, mov, nota_mov)
-            # marcar reset para limpiar inputs y refrescar
+            _ = insertar_movimiento(f, mov, nota_mov)
             set_reset_flag(f, True)
             st.rerun()
 
@@ -295,12 +457,11 @@ for _, row in df.iterrows():
         st.caption("avance")
         with st.popover(f"{int(row['avance'])}"):
             st.markdown(f"**Historial — {row['actividad']}**")
-
             hist = obtener_historial(f)
+            st.caption(f"Movimientos registrados: {len(hist)}")
             if not hist:
                 st.caption("Sin movimientos registrados aún.")
             else:
-                # Vista simple del historial
                 df_hist_view = pd.DataFrame([
                     {"Fecha": i["fecha"], "Cantidad": i["cantidad"], "Nota": i.get("nota", "")}
                     for i in hist
@@ -308,7 +469,6 @@ for _, row in df.iterrows():
                 st.table(df_hist_view)
 
                 st.markdown("**Editar / eliminar**")
-                # Controles por registro
                 for item in hist:
                     id_mov = int(item["id"])
                     ec1, ec2, ec3, ec4 = st.columns([1, 1, 3, 1.2])
@@ -329,7 +489,6 @@ for _, row in df.iterrows():
                         if st.button("💾 Guardar", key=f"save_edit_{f}_{id_mov}"):
                             actualizar_movimiento(id_mov, f, int(nueva_cant), nueva_nota)
                             st.rerun()
-
                         if st.button("🗑️ Eliminar", key=f"del_{f}_{id_mov}"):
                             eliminar_movimiento(id_mov)
                             st.rerun()
@@ -354,14 +513,22 @@ st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 # 8) DESCARGAR EXCEL
 # =========================
 buffer = BytesIO()
-# construir columna historial como texto "DD-MM-YYYY — cantidad — nota"
 hist_texts = []
 for _, r in df.iterrows():
     f = int(r["fila"])
     h = obtener_historial(f)
     hist_texts.append("; ".join([f"{i.get('fecha','')} — {i.get('cantidad',0)} — {i.get('nota','')}" for i in h]))
 
-df_export = df[["fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]].copy()
+df_export = df[[
+    "fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"
+]].copy()
+
+# Añadimos columnas de contexto para el Excel
+ctx = obtener_metas_df().set_index("fila")
+for col in ["indole", "zona_trabajo", "actores", "indicador_actividad",
+            "consideraciones", "periodicidad", "responsable", "efecto_esperado"]:
+    df_export[col] = df_export["fila"].map(ctx[col])
+
 df_export["historial"] = hist_texts
 df_export.to_excel(buffer, index=False)
 buffer.seek(0)
@@ -371,6 +538,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 # =========================
 # 9) 📊 Visualizaciones por meta (ocultas hasta seleccionar)
 # =========================
@@ -379,12 +547,11 @@ st.markdown("### 📊 Visualizaciones por meta")
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Colores vivos
+# Colores vivos + tema oscuro
 BLUE = "#1E88E5"   # azul intenso
 RED  = "#E53935"   # rojo intenso
 
 def _prep_fig():
-    # Tema oscuro
     fig, ax = plt.subplots(figsize=(8, 4.5), facecolor="black")
     ax.set_facecolor("black")
     ax.tick_params(colors="white")
@@ -395,15 +562,12 @@ def _prep_fig():
     ax.grid(axis="y", alpha=0.15, color="white")
     return fig, ax
 
-# Opciones de metas
 _df_opts = df[["fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje_val"]].copy()
 _df_opts["op"] = _df_opts["fila"].astype(str) + " — " + _df_opts["actividad"]
 placeholder = "— Selecciona una meta —"
 options = [placeholder] + _df_opts["op"].tolist()
-
 sel = st.selectbox("Elegí la meta a visualizar", options, index=0, key="sel_meta_uno")
 
-# Si no hay selección válida, no mostramos nada
 if sel == placeholder:
     st.info("Seleccioná una meta para mostrar el gráfico.")
 else:
@@ -413,7 +577,7 @@ else:
     meta = int(row_sel["meta_total"])
     avance = int(row_sel["avance"])
     restante = max(0, meta - avance)
-    pct = float(row_sel["porcentaje_val"])  # 1 decimal
+    pct = float(row_sel["porcentaje_val"])
 
     tipo = st.radio("Tipo de gráfico", ["Barras", "Circular"], index=0, horizontal=True, key="tipo_uno_por_uno")
 
@@ -423,58 +587,41 @@ else:
         labels = ["Avance", "Restante"]
         x = np.arange(len(labels))
         width = 0.6
-
-        # Sombra
+        # sombra
         ax.bar(x + 0.03, vals, width=width, color="black", alpha=0.35, zorder=0)
-
-        # Barras principales azul/rojo con borde blanco
-        bars = ax.bar(
-            x, vals, width=width, color=[BLUE, RED], alpha=0.95,
-            edgecolor="white", linewidth=1.2, zorder=1
-        )
+        # barras principales
+        bars = ax.bar(x, vals, width=width, color=[BLUE, RED], alpha=0.95,
+                      edgecolor="white", linewidth=1.2, zorder=1)
         y_max = max(meta, max(vals), 1)
         ax.set_ylim(0, y_max * 1.15)
         ax.set_xticks(x)
         ax.set_xticklabels(labels, color="white")
         ax.set_ylabel("Cantidad", color="white")
         ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
-
-        # Etiquetas (valor y % real con 1 decimal)
         for b, val in zip(bars, vals):
             perc = (val / meta * 100) if meta else 0.0
-            ax.text(
-                b.get_x() + b.get_width()/2, b.get_height() + (y_max * 0.03),
-                f"{val}  ({perc:.1f}%)", ha="center", va="bottom", color="white", fontsize=10
-            )
-
+            ax.text(b.get_x() + b.get_width()/2, b.get_height() + (y_max * 0.03),
+                    f"{val}  ({perc:.1f}%)", ha="center", va="bottom", color="white", fontsize=10)
         st.pyplot(fig, clear_figure=True)
 
     elif tipo == "Circular":
         fig, ax = _prep_fig()
         datos = [max(avance, 0), max(restante, 0)]
         etiquetas = ["Avance", "Restante"]
-
         if sum(datos) == 0:
             datos, etiquetas = [1], ["Sin datos"]
-
-        def autopct_fmt(p):
-            return f"{p:.1f}%"
-
+        def autopct_fmt(p): return f"{p:.1f}%"
         wedges, texts, autotexts = ax.pie(
-            datos,
-            labels=etiquetas,
-            autopct=autopct_fmt,
-            startangle=90,
-            colors=[BLUE, RED],
-            shadow=True,  # sombreado
+            datos, labels=etiquetas, autopct=autopct_fmt, startangle=90,
+            colors=[BLUE, RED], shadow=True,
             wedgeprops=dict(edgecolor="white", linewidth=1.2)
         )
         for t in texts + autotexts:
             t.set_color("white")
         ax.axis("equal")
         ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
-
         st.pyplot(fig, clear_figure=True)
+
 
 
 
