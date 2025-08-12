@@ -5,12 +5,11 @@ from datetime import datetime
 import sqlite3
 
 # ===== Conexión existente =====
-DB_PATH = r"C:\Users\Usuario\Desktop\Proyectos\Seguimiento Planes\avances.db"  # <- tu archivo real
+DB_PATH = r"C:\Users\Usuario\Desktop\Proyectos\Seguimiento Planes\avances.db"
 CONN = sqlite3.connect(DB_PATH, check_same_thread=False)
 CONN.execute("PRAGMA foreign_keys = ON")
 print("DB usada:", CONN.execute("PRAGMA database_list").fetchall())
 print("Movs totales:", CONN.execute("SELECT COUNT(*) FROM movimientos").fetchone()[0])
-
 
 # ===== Helpers de BD =====
 def db_insert_mov(fila, fecha, cantidad, delta, nota):
@@ -48,9 +47,7 @@ def db_load_hist(fila):
     ]
 
 def ensure_schema(conn, metas_seed):
-    """Crea tablas/vistas/trigger si no existen y precarga metas si está vacío."""
     cur = conn.cursor()
-    # Tablas básicas
     cur.executescript("""
     CREATE TABLE IF NOT EXISTS metas (
       fila       INTEGER PRIMARY KEY,
@@ -143,10 +140,8 @@ def ensure_schema(conn, metas_seed):
     FROM movimientos
     ORDER BY fila, id;
     """)
-    # Precarga de metas si no hay registros
     cur.execute("SELECT COUNT(*) FROM metas")
-    count = cur.fetchone()[0]
-    if count == 0:
+    if cur.fetchone()[0] == 0:
         cur.executemany(
             "INSERT INTO metas (fila, actividad, meta_total) VALUES (?, ?, ?)",
             [(m["fila"], m["actividad"], m["meta_total"]) for m in metas_seed]
@@ -155,7 +150,7 @@ def ensure_schema(conn, metas_seed):
 
 st.subheader("📈 Avances por meta")
 
-# ---- Metas base (meta_total original) ----
+# ---- Metas base ----
 metas = [
     {"fila": 1,  "actividad": "Operativos interinstitucionales nocturnos",        "meta_total": 24},
     {"fila": 2,  "actividad": "Operativos presenciales nocturnos",                "meta_total": 184},
@@ -169,23 +164,21 @@ metas = [
     {"fila": 10, "actividad": "Capacitaciones de Seguridad Comunitaria",          "meta_total": 1},
 ]
 df_base = pd.DataFrame(metas)
-
-# >>> Bootstrap de esquema y metas
 ensure_schema(CONN, metas)
 
 # ---- Inicializar estado ----
 for _, r in df_base.iterrows():
     f = int(r.fila)
-    st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))   # meta original
-    st.session_state.setdefault(f"avance_{f}", 0)                       # acumulado
-    st.session_state.setdefault(f"restante_{f}", int(r.meta_total))     # restante
-    # historial: [{fecha(dd-mm-YYYY), cantidad, nota, delta, db_id}]
+    st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))
+    st.session_state.setdefault(f"avance_{f}", 0)
+    st.session_state.setdefault(f"restante_{f}", int(r.meta_total))
+    # historial: [{fecha, cantidad, nota, delta, db_id}]
     st.session_state.setdefault(f"hist_{f}", [])
     st.session_state.setdefault(f"mov_val_{f}", 0)
     st.session_state.setdefault(f"nota_inline_{f}", "")
     st.session_state.setdefault(f"reset_mov_{f}", False)
 
-# ---- Cargar historial desde BD (una sola vez por fila) ----
+# ---- Cargar historial una vez ----
 st.session_state.setdefault("loaded_from_db", {})
 for _, r in df_base.iterrows():
     f = int(r.fila)
@@ -200,7 +193,7 @@ for _, r in df_base.iterrows():
             st.session_state[f"restante_{f}"] = meta_total - avance_clamped
         st.session_state["loaded_from_db"][f] = True
 
-# ---- UI por fila (manejo de reset ANTES de crear el widget) ----
+# ---- UI por fila ----
 for _, r in df_base.iterrows():
     f = int(r.fila)
 
@@ -233,7 +226,10 @@ for _, r in df_base.iterrows():
         )
     with c3:
         if st.button("Guardar movimiento", key=f"guardar_{f}"):
-            mov = int(st.session_state[f"mov_val_{f}"])
+            # ====== CAMBIO CLAVE: signo del movimiento ======
+            mov_ui = int(st.session_state[f"mov_val_{f}"])
+            mov = -mov_ui  # negativo en UI => avanzar; positivo => devolver
+
             meta_total = st.session_state[f"meta_total_{f}"]
             avance    = st.session_state[f"avance_{f}"]
 
@@ -398,7 +394,6 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
-
 
 
 
