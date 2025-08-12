@@ -3,13 +3,14 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 import sqlite3
+from pathlib import Path
 
-# ===== Conexión existente =====
-DB_PATH = r"C:\Users\Usuario\Desktop\Proyectos\Seguimiento Planes\avances.db"
-CONN = sqlite3.connect(DB_PATH, check_same_thread=False)
+# ===== Ubicación del .db (usa tu ruta si existe; si no, crea local a app.py) =====
+WIN_DB = Path(r"C:\Users\Usuario\Desktop\Proyectos\Seguimiento Planes\avances.db")
+DB_PATH = WIN_DB if WIN_DB.exists() else (Path(__file__).resolve().parent / "avances.db")
+
+CONN = sqlite3.connect(DB_PATH.as_posix(), check_same_thread=False)
 CONN.execute("PRAGMA foreign_keys = ON")
-print("DB usada:", CONN.execute("PRAGMA database_list").fetchall())
-print("Movs totales:", CONN.execute("SELECT COUNT(*) FROM movimientos").fetchone()[0])
 
 # ===== Helpers de BD =====
 def db_insert_mov(fila, fecha, cantidad, delta, nota):
@@ -140,8 +141,9 @@ def ensure_schema(conn, metas_seed):
     FROM movimientos
     ORDER BY fila, id;
     """)
+    # Seed metas si está vacío
     cur.execute("SELECT COUNT(*) FROM metas")
-    if cur.fetchone()[0] == 0:
+    if cur.fetchone()[0] == 0 and metas_seed:
         cur.executemany(
             "INSERT INTO metas (fila, actividad, meta_total) VALUES (?, ?, ?)",
             [(m["fila"], m["actividad"], m["meta_total"]) for m in metas_seed]
@@ -164,7 +166,16 @@ metas = [
     {"fila": 10, "actividad": "Capacitaciones de Seguridad Comunitaria",          "meta_total": 1},
 ]
 df_base = pd.DataFrame(metas)
+
+# >>> Crear esquema ANTES de cualquier SELECT (evita OperationalError)
 ensure_schema(CONN, metas)
+
+# (opcional, solo para log en consola)
+try:
+    print("DB usada:", CONN.execute("PRAGMA database_list").fetchall())
+    print("Movs totales:", CONN.execute("SELECT COUNT(*) FROM movimientos").fetchone()[0])
+except sqlite3.OperationalError:
+    pass
 
 # ---- Inicializar estado ----
 for _, r in df_base.iterrows():
@@ -172,13 +183,12 @@ for _, r in df_base.iterrows():
     st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))
     st.session_state.setdefault(f"avance_{f}", 0)
     st.session_state.setdefault(f"restante_{f}", int(r.meta_total))
-    # historial: [{fecha, cantidad, nota, delta, db_id}]
-    st.session_state.setdefault(f"hist_{f}", [])
+    st.session_state.setdefault(f"hist_{f}", [])          # [{fecha,cantidad,nota,delta,db_id}]
     st.session_state.setdefault(f"mov_val_{f}", 0)
     st.session_state.setdefault(f"nota_inline_{f}", "")
     st.session_state.setdefault(f"reset_mov_{f}", False)
 
-# ---- Cargar historial una vez ----
+# ---- Cargar historial desde BD (una vez) ----
 st.session_state.setdefault("loaded_from_db", {})
 for _, r in df_base.iterrows():
     f = int(r.fila)
@@ -226,7 +236,7 @@ for _, r in df_base.iterrows():
         )
     with c3:
         if st.button("Guardar movimiento", key=f"guardar_{f}"):
-            # ====== CAMBIO CLAVE: signo del movimiento ======
+            # Interpretar signo como indica la UI:
             mov_ui = int(st.session_state[f"mov_val_{f}"])
             mov = -mov_ui  # negativo en UI => avanzar; positivo => devolver
 
