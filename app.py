@@ -3,7 +3,7 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 
-st.subheader("📈 Avances por meta")
+st.subheader("📈 Avances por meta (movimientos ± con límite restante)")
 
 # ---- Metas base (meta_total original) ----
 metas = [
@@ -23,17 +23,17 @@ df_base = pd.DataFrame(metas)
 # ---- Inicializar estado ----
 for _, r in df_base.iterrows():
     f = int(r.fila)
-    st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))       # meta original
-    st.session_state.setdefault(f"avance_{f}", 0)                           # acumulado
-    st.session_state.setdefault(f"restante_{f}", int(r.meta_total))         # restante
-    st.session_state.setdefault(f"nota_{f}", "")                            # notas consolidadas
-    st.session_state.setdefault(f"hist_{f}", [])                            # historial de movimientos
-    st.session_state.setdefault(f"mov_str_{f}", "")                         # input de movimiento (texto)
-    st.session_state.setdefault(f"nota_inline_{f}", "")                     # nota del movimiento
+    st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))   # meta original
+    st.session_state.setdefault(f"avance_{f}", 0)                       # acumulado
+    st.session_state.setdefault(f"restante_{f}", int(r.meta_total))     # restante
+    st.session_state.setdefault(f"nota_{f}", "")                        # notas consolidadas
+    st.session_state.setdefault(f"hist_{f}", [])                        # historial
+    st.session_state.setdefault(f"mov_str_{f}", "")                     # input de movimiento (texto)
+    st.session_state.setdefault(f"nota_inline_{f}", "")                 # nota del movimiento
+    st.session_state.setdefault(f"reset_mov_{f}", False)                # FLAG de reseteo
 
-
-
-def parse_mov(s: str) -> int | None:
+# ---- Función para parsear ±movimiento ----
+def parse_mov(s):
     s = (s or "").strip().replace(" ", "")
     if s == "":
         return None
@@ -42,9 +42,21 @@ def parse_mov(s: str) -> int | None:
     except ValueError:
         return None
 
-# ---- UI por fila: movimiento ± y guardar ----
+st.markdown(
+    "Registra **movimientos** (escribe `+2` o `-2`). "
+    "Al **guardar**, se aplica al acumulado, se actualiza el **límite restante** y el campo vuelve a estar **en blanco**."
+)
+
+# ---- UI por fila: antes de pintar inputs, atiende posibles resets ----
 for _, r in df_base.iterrows():
     f = int(r.fila)
+
+    # Si el ciclo anterior marcó reset, limpiamos ANTES de crear el widget (evita el error)
+    if st.session_state.get(f"reset_mov_{f}", False):
+        st.session_state[f"mov_str_{f}"] = ""
+        st.session_state[f"nota_inline_{f}"] = ""
+        st.session_state[f"reset_mov_{f}"] = False
+
     colA, colB = st.columns([2.2, 1])
     with colA:
         st.markdown(f"**{r.actividad}**  \nMeta original: **{st.session_state[f'meta_total_{f}']}**")
@@ -74,28 +86,25 @@ for _, r in df_base.iterrows():
                 meta_total = st.session_state[f"meta_total_{f}"]
                 avance    = st.session_state[f"avance_{f}"]
 
-                # Aplica con límites 0..meta_total
+                # Aplica dentro de 0..meta_total
                 nuevo_avance = max(0, min(meta_total, avance + mov))
-                delta_real = nuevo_avance - avance  # por si hubo tope
+                delta_real = nuevo_avance - avance
                 st.session_state[f"avance_{f}"] = nuevo_avance
                 st.session_state[f"restante_{f}"] = meta_total - nuevo_avance
 
-                # Guardar en historial
+                # Historial + notas
                 nota_mov = st.session_state[f"nota_inline_{f}"].strip()
                 st.session_state[f"hist_{f}"].append({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "movimiento": delta_real,
                     "nota": nota_mov
                 })
-                # Anexar también a las notas consolidadas (opcional)
                 if nota_mov:
                     prefix = f"• (+{delta_real}) " if delta_real > 0 else (f"• ({delta_real}) " if delta_real < 0 else "• ")
-                    st.session_state[f"nota_{f}"] += (("\n" if st.session_state[f"nota_{f}"] else "") +
-                                                      prefix + nota_mov)
+                    st.session_state[f"nota_{f}"] += (("\n" if st.session_state[f"nota_{f}"] else "") + prefix + nota_mov)
 
-                # Reset de los inputs (no queda “estático”)
-                st.session_state[f"mov_str_{f}"] = ""
-                st.session_state[f"nota_inline_{f}"] = ""
+                # En lugar de asignar directamente al widget (lo que da error), marcamos reset
+                st.session_state[f"reset_mov_{f}"] = True
 
                 if hasattr(st, "toast"):
                     st.toast("Movimiento guardado", icon="✅")
@@ -104,7 +113,7 @@ for _, r in df_base.iterrows():
 
     st.divider()
 
-# ---- Construye DataFrame de salida ----
+# ---- Armar DataFrame resumen ----
 rows = []
 for _, r in df_base.iterrows():
     f = int(r.fila)
@@ -123,14 +132,15 @@ for _, r in df_base.iterrows():
         "estado": estado,
         "respaldo": st.session_state[f"nota_{f}"],
     })
-
 df = pd.DataFrame(rows)
 
 # ---- Tabla resumen ----
-st.dataframe(df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]],
-             use_container_width=True)
+st.dataframe(
+    df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]],
+    use_container_width=True
+)
 
-# ---- Burbuja para respaldo + historial al hacer clic en el avance ----
+# ---- Popover con respaldo + historial al hacer clic en el avance ----
 st.markdown("#### Resumen interactivo (clic en el **avance** para ver/editar respaldo e historial)")
 for _, r in df.iterrows():
     f = int(r["fila"])
@@ -149,10 +159,9 @@ for _, r in df.iterrows():
             st.markdown(f"**Respaldo — {r['actividad']}**")
             st.text_area(
                 "Notas consolidadas (puedes editar)",
-                key=f"nota_{f}",
+                key=f"nota_{f}",  # única por fila
                 height=150
             )
-            # Historial de movimientos
             hist = st.session_state.get(f"hist_{f}", [])
             if hist:
                 st.markdown("**Historial de movimientos**")
@@ -175,11 +184,11 @@ st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 
 # ---- Descargar Excel ----
 buffer = BytesIO()
-# Convierte historial a texto legible para exportar
 df_export = df.copy()
+# Exporta historial como texto legible
 hist_cols = []
-for _, r in df.iterrows():
-    f = int(r["fila"])
+for _, row in df.iterrows():
+    f = int(row["fila"])
     h = st.session_state.get(f"hist_{f}", [])
     hist_cols.append("; ".join([f"{i['fecha']} {i['movimiento']} ({i['nota']})" if i['nota'] else f"{i['fecha']} {i['movimiento']}" for i in h]))
 df_export["historial"] = hist_cols
@@ -192,8 +201,6 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
-
-
 
 
 
