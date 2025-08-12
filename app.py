@@ -371,6 +371,86 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+# =========================
+# 9) 📊 VISUALIZACIONES POR META
+# =========================
+st.markdown("### 📊 Visualizaciones por meta")
+
+import matplotlib.pyplot as plt
+
+# Selector global (aplica a todos salvo que se sobreescriba por meta)
+tipo_global = st.radio(
+    "Tipo de gráfico para todos",
+    ["Barras", "Circular", "Lineal"],
+    index=0,
+    horizontal=True,
+    key="tipo_global_graficos"
+)
+
+for _, row in df.iterrows():
+    f = int(row["fila"])
+    meta = int(row["meta_total"])
+    avance = int(row["avance"])
+    restante = max(0, meta - avance)
+
+    with st.expander(f"{row['actividad']}"):
+        # Permitir sobreescribir el tipo por meta
+        tipo_local = st.radio(
+            "Ver como",
+            ["Usar tipo global", "Barras", "Circular", "Lineal"],
+            index=0,
+            horizontal=True,
+            key=f"tipo_local_{f}"
+        )
+        tipo = tipo_global if tipo_local == "Usar tipo global" else tipo_local
+
+        # ----- BARRAS: Avance vs Restante -----
+        if tipo == "Barras":
+            fig, ax = plt.subplots()
+            ax.bar(["Avance", "Restante"], [avance, restante])
+            ax.set_ylim(0, max(meta, 1))
+            ax.set_ylabel("Cantidad")
+            ax.set_title(f"Avance vs Restante (Meta {meta})")
+            st.pyplot(fig, clear_figure=True)
+
+        # ----- CIRCULAR: Avance vs Restante -----
+        elif tipo == "Circular":
+            fig, ax = plt.subplots()
+            # Evitar pie vacío
+            valores = [max(avance, 0), max(restante, 0)]
+            etiquetas = ["Avance", "Restante"]
+            if sum(valores) == 0:
+                valores = [1]  # para mostrar disco vacío
+                etiquetas = ["Sin datos"]
+            ax.pie(valores, labels=etiquetas, autopct="%1.0f%%", startangle=90)
+            ax.axis("equal")
+            ax.set_title(f"Distribución de la meta ({meta})")
+            st.pyplot(fig, clear_figure=True)
+
+        # ----- LINEAL: Evolución del avance en el tiempo -----
+        elif tipo == "Lineal":
+            hist = obtener_historial(f)
+            if not hist:
+                st.info("Sin movimientos aún.")
+            else:
+                dfh = pd.DataFrame(hist)
+                # Fecha dd-mm-YYYY -> datetime
+                dfh["fecha_dt"] = pd.to_datetime(dfh["fecha"], format="%d-%m-%Y", errors="coerce")
+                dfh = dfh.dropna(subset=["fecha_dt"]).sort_values("fecha_dt")
+
+                # Sumar deltas por día y acumular, recortando a [0, meta]
+                dfh = dfh.groupby("fecha_dt", as_index=False)["delta"].sum().sort_values("fecha_dt")
+                dfh["acum"] = dfh["delta"].cumsum().clip(lower=0, upper=meta)
+
+                fig, ax = plt.subplots()
+                ax.plot(dfh["fecha_dt"], dfh["acum"], marker="o")
+                ax.set_ylim(0, max(meta, 1))
+                ax.set_xlabel("Fecha")
+                ax.set_ylabel("Avance acumulado")
+                ax.set_title(f"Evolución del avance (Meta {meta})")
+                ax.grid(True, alpha=0.3)
+                st.pyplot(fig, clear_figure=True)
+
 
 
 
