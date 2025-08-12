@@ -5,10 +5,11 @@ from datetime import datetime
 import sqlite3
 from pathlib import Path
 
-# ===== Ubicación del .db (usa tu ruta si existe; si no, crea local a app.py) =====
+# ===== Ruta del .DB (usa tu archivo local; si no existe, crea uno junto a app.py) =====
 WIN_DB = Path(r"C:\Users\Usuario\Desktop\Proyectos\Seguimiento Planes\avances.db")
 DB_PATH = WIN_DB if WIN_DB.exists() else (Path(__file__).resolve().parent / "avances.db")
 
+# ===== Conexión SQLite =====
 CONN = sqlite3.connect(DB_PATH.as_posix(), check_same_thread=False)
 CONN.execute("PRAGMA foreign_keys = ON")
 
@@ -141,7 +142,6 @@ def ensure_schema(conn, metas_seed):
     FROM movimientos
     ORDER BY fila, id;
     """)
-    # Seed metas si está vacío
     cur.execute("SELECT COUNT(*) FROM metas")
     if cur.fetchone()[0] == 0 and metas_seed:
         cur.executemany(
@@ -167,15 +167,8 @@ metas = [
 ]
 df_base = pd.DataFrame(metas)
 
-# >>> Crear esquema ANTES de cualquier SELECT (evita OperationalError)
+# >>> Crear esquema antes de cualquier SELECT
 ensure_schema(CONN, metas)
-
-# (opcional, solo para log en consola)
-try:
-    print("DB usada:", CONN.execute("PRAGMA database_list").fetchall())
-    print("Movs totales:", CONN.execute("SELECT COUNT(*) FROM movimientos").fetchone()[0])
-except sqlite3.OperationalError:
-    pass
 
 # ---- Inicializar estado ----
 for _, r in df_base.iterrows():
@@ -183,12 +176,13 @@ for _, r in df_base.iterrows():
     st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))
     st.session_state.setdefault(f"avance_{f}", 0)
     st.session_state.setdefault(f"restante_{f}", int(r.meta_total))
-    st.session_state.setdefault(f"hist_{f}", [])          # [{fecha,cantidad,nota,delta,db_id}]
+    # historial: [{fecha, cantidad, nota, delta, db_id}]
+    st.session_state.setdefault(f"hist_{f}", [])
     st.session_state.setdefault(f"mov_val_{f}", 0)
     st.session_state.setdefault(f"nota_inline_{f}", "")
     st.session_state.setdefault(f"reset_mov_{f}", False)
 
-# ---- Cargar historial desde BD (una vez) ----
+# ---- Cargar historial desde BD (una sola vez por fila) ----
 st.session_state.setdefault("loaded_from_db", {})
 for _, r in df_base.iterrows():
     f = int(r.fila)
@@ -236,18 +230,19 @@ for _, r in df_base.iterrows():
         )
     with c3:
         if st.button("Guardar movimiento", key=f"guardar_{f}"):
-            # Interpretar signo como indica la UI:
+            # Interpretar la UX: negativo => AVANZAR; positivo => DEVOLVER
             mov_ui = int(st.session_state[f"mov_val_{f}"])
-            mov = -mov_ui  # negativo en UI => avanzar; positivo => devolver
-
             meta_total = st.session_state[f"meta_total_{f}"]
-            avance    = st.session_state[f"avance_{f}"]
+            avance     = st.session_state[f"avance_{f}"]
 
-            nuevo_avance = max(0, min(meta_total, avance + mov))
-            delta_real = nuevo_avance - avance
-            st.session_state[f"avance_{f}"] = nuevo_avance
+            # Avance nuevo acorde a UI
+            nuevo_avance = max(0, min(meta_total, avance - mov_ui))
+            delta_real   = nuevo_avance - avance
+
+            st.session_state[f"avance_{f}"]   = nuevo_avance
             st.session_state[f"restante_{f}"] = meta_total - nuevo_avance
 
+            # Registrar si hubo cambio o hay nota
             nota_mov = (st.session_state[f"nota_inline_{f}"] or "").strip()
             cantidad = abs(int(delta_real))
             if nota_mov or cantidad > 0:
@@ -404,6 +399,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
