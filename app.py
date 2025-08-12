@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from datetime import datetime
+import sqlite3
+CONN = sqlite3.connect("avances.db", check_same_thread=False)
+CONN.execute("PRAGMA foreign_keys = ON")
 
 st.subheader("📈 Avances por meta")
 
@@ -239,6 +242,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
