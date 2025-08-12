@@ -8,6 +8,8 @@ import sqlite3
 DB_PATH = r"C:\Users\Usuario\Desktop\Proyectos\Seguimiento Planes\avances.db"  # <- tu archivo real
 CONN = sqlite3.connect(DB_PATH, check_same_thread=False)
 CONN.execute("PRAGMA foreign_keys = ON")
+print("DB usada:", CONN.execute("PRAGMA database_list").fetchall())
+print("Movs totales:", CONN.execute("SELECT COUNT(*) FROM movimientos").fetchone()[0])
 
 
 # ===== Helpers de BD =====
@@ -396,6 +398,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
