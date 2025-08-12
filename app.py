@@ -3,7 +3,7 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 
-st.subheader("📈 Avances por meta (movimientos ± con límite restante)")
+st.subheader("📈 Avances por meta")
 
 # ---- Metas base (meta_total original) ----
 metas = [
@@ -31,8 +31,7 @@ for _, r in df_base.iterrows():
     st.session_state.setdefault(f"mov_str_{f}", "")                         # input de movimiento (texto)
     st.session_state.setdefault(f"nota_inline_{f}", "")                     # nota del movimiento
 
-st.markdown("Registra **movimientos** (escribe `+2` o `-2`). "
-            "Al **guardar**, se aplica al acumulado, se actualiza el **límite restante** y el campo vuelve a estar **en blanco**.")
+
 
 def parse_mov(s: str) -> int | None:
     s = (s or "").strip().replace(" ", "")
@@ -193,6 +192,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
