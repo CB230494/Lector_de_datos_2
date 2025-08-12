@@ -34,7 +34,7 @@ for _, r in df_base.iterrows():
 st.markdown(
     "Usa los botones **− / +** para ajustar el **Movimiento**. "
     "Al **guardar**, se aplica al acumulado, se actualiza el **límite restante** y el campo vuelve a **0**. "
-    "La *nota del movimiento* queda guardada con **fecha**."
+    "La *nota del movimiento* queda guardada con **fecha (DD-MM-YYYY)**."
 )
 
 # ---- UI por fila (manejo de reset ANTES de crear el widget) ----
@@ -77,15 +77,14 @@ for _, r in df_base.iterrows():
 
             # Aplica dentro de 0..meta_total
             nuevo_avance = max(0, min(meta_total, avance + mov))
-            delta_real = nuevo_avance - avance
             st.session_state[f"avance_{f}"] = nuevo_avance
             st.session_state[f"restante_{f}"] = meta_total - nuevo_avance
 
-            # Guardar nota con fecha (si se escribió algo)
+            # Guardar nota con fecha (si se escribió algo) en formato DD-MM-YYYY
             nota_mov = st.session_state[f"nota_inline_{f}"].strip()
             if nota_mov:
                 st.session_state[f"hist_{f}"].append({
-                    "fecha": datetime.now().strftime("%Y-%m-%d"),
+                    "fecha": datetime.now().strftime("%d-%m-%Y"),
                     "nota": nota_mov
                 })
 
@@ -129,7 +128,7 @@ st.dataframe(
     use_container_width=True
 )
 
-# ---- Burbuja: muestra NOTAS con FECHA y permite agregar más notas ahí mismo ----
+# ---- Burbuja: muestra NOTAS con FECHA (DD-MM-YYYY) y permite agregar más notas ahí mismo ----
 st.markdown("#### Resumen interactivo (clic en el **avance** para ver/añadir notas con fecha)")
 for _, r in df.iterrows():
     f = int(r["fila"])
@@ -147,7 +146,7 @@ for _, r in df.iterrows():
         with st.popover(f"{int(r['avance'])}"):
             st.markdown(f"**Notas registradas — {r['actividad']}**")
 
-            # Mostrar historial (Fecha, Nota)
+            # Mostrar historial (Fecha, Nota) en formato DD-MM-YYYY
             hist = st.session_state.get(f"hist_{f}", [])
             if hist:
                 df_hist = pd.DataFrame(hist).rename(columns={"fecha": "Fecha", "nota": "Nota"})
@@ -167,10 +166,9 @@ for _, r in df.iterrows():
                 texto = (st.session_state.get(f"nota_popup_{f}", "") or "").strip()
                 if texto:
                     st.session_state[f"hist_{f}"].append({
-                        "fecha": datetime.now().strftime("%Y-%m-%d"),
+                        "fecha": datetime.now().strftime("%d-%m-%Y"),
                         "nota": texto
                     })
-                    # (opcional) no limpiamos el text_area aquí para evitar el error de reasignación en el mismo ciclo
                     st.success("Nota guardada")
                 else:
                     st.warning("Escribe una nota antes de guardar.")
@@ -192,7 +190,7 @@ st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 buffer = BytesIO()
 df_export = df.drop(columns=["fila"]).copy()
 
-# Agrega columna 'historial' con "YYYY-MM-DD — nota" concatenado
+# Agrega columna 'historial' con "DD-MM-YYYY — nota" concatenado
 hist_texts = []
 for _, row in df.iterrows():
     f = int(row["fila"])
@@ -208,6 +206,7 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
 
 
 
