@@ -474,18 +474,18 @@ from openpyxl.utils import get_column_letter
 
 buffer = BytesIO()
 
-# --- Hoja RESUMEN (mantenemos columnas + contexto como en tu export previo) ---
+# --- Hoja RESUMEN (igual a tu tabla + contexto) ---
 df_resumen = df[[
     "fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"
 ]].copy()
 
-# Contexto
+# Agregar columnas de contexto
 ctx = obtener_metas_df().set_index("fila")
 for col in ["indole", "zona_trabajo", "actores", "indicador_actividad",
             "consideraciones", "periodicidad", "responsable", "efecto_esperado"]:
     df_resumen[col] = df_resumen["fila"].map(ctx[col])
 
-# --- Hoja HISTORIAL (una fila por movimiento, SIN delta) ---
+# --- Hoja HISTORIAL (1 fila por movimiento, SIN 'delta') ---
 hist_rows = []
 for _, r in df.iterrows():
     f = int(r["fila"])
@@ -507,10 +507,10 @@ else:
     df_respaldo = pd.DataFrame(columns=["fila", "actividad", "fecha", "nota"])
 
 def estilizar_hoja(ws, hex_tab):
-    # color pestaña
+    # Color de pestaña
     ws.sheet_properties.tabColor = hex_tab
-    # estilo encabezado
-    header_fill = PatternFill("solid", fgColor="1E88E5")
+    # Estilos de encabezado
+    header_fill = PatternFill("solid", fgColor="1E88E5")  # azul
     header_font = Font(color="FFFFFF", bold=True)
     align_center = Alignment(horizontal="center", vertical="center")
     thin = Side(border_style="thin", color="D0D0D0")
@@ -522,8 +522,7 @@ def estilizar_hoja(ws, hex_tab):
         c.font = header_font
         c.alignment = align_center
         c.border = border
-        letter = get_column_letter(col)
-        ws.column_dimensions[letter].width = max(12, min(60, len(str(c.value)) + 6))
+        ws.column_dimensions[get_column_letter(col)].width = max(12, min(60, len(str(c.value)) + 6))
     ws.freeze_panes = "A2"
 
 with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -533,11 +532,11 @@ with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
     if not df_respaldo.empty:
         df_respaldo.to_excel(writer, index=False, sheet_name="Respaldo (notas)")
 
-    # estilos
+    # Aplicar colores a pestañas + encabezados
     if "Resumen" in writer.sheets:
-        estilizar_hoja(writer.sheets["Resumen"], "1E88E5")     # azul
+        estilizar_hoja(writer.sheets["Resumen"], "1E88E5")      # azul
     if "Historial" in writer.sheets:
-        estilizar_hoja(writer.sheets["Historial"], "E53935")   # rojo
+        estilizar_hoja(writer.sheets["Historial"], "E53935")    # rojo
     if "Respaldo (notas)" in writer.sheets:
         estilizar_hoja(writer.sheets["Respaldo (notas)"], "43A047")  # verde
 
@@ -627,5 +626,6 @@ else:
         ax.axis("equal")
         ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
         st.pyplot(fig, clear_figure=True)
+
 
 
