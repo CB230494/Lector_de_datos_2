@@ -372,84 +372,114 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
 # =========================
-# 9) 📊 VISUALIZACIONES POR META
+# 9) 📊 VISUALIZACIONES POR META (UNO POR UNO, OSCURO & PASTEL)
 # =========================
-st.markdown("### 📊 Visualizaciones por meta")
+st.markdown("### 📊 Visualizaciones por meta (uno por uno)")
 
 import matplotlib.pyplot as plt
+import numpy as np
 
-# Selector global (aplica a todos salvo que se sobreescriba por meta)
-tipo_global = st.radio(
-    "Tipo de gráfico para todos",
-    ["Barras", "Circular", "Lineal"],
-    index=0,
-    horizontal=True,
-    key="tipo_global_graficos"
-)
+# Paleta pastel
+PASTEL = ["#8ECAE6", "#CDE7F9", "#A2D2FF", "#FFC8DD", "#CDB4DB", "#FFAFCC", "#B9FBC0", "#C6DEF1"]
 
-for _, row in df.iterrows():
-    f = int(row["fila"])
-    meta = int(row["meta_total"])
-    avance = int(row["avance"])
-    restante = max(0, meta - avance)
+# Selector de meta (uno por uno)
+_df_opts = df[["fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje_val"]].copy()
+_df_opts["op"] = _df_opts["fila"].astype(str) + " — " + _df_opts["actividad"]
+sel = st.selectbox("Elegí la meta a visualizar", _df_opts["op"].tolist(), index=0, key="sel_meta_uno")
+fila_sel = int(_df_opts.loc[_df_opts["op"] == sel, "fila"].iloc[0])
+row_sel = df.loc[df["fila"] == fila_sel].iloc[0]
 
-    with st.expander(f"{row['actividad']}"):
-        # Permitir sobreescribir el tipo por meta
-        tipo_local = st.radio(
-            "Ver como",
-            ["Usar tipo global", "Barras", "Circular", "Lineal"],
-            index=0,
-            horizontal=True,
-            key=f"tipo_local_{f}"
-        )
-        tipo = tipo_global if tipo_local == "Usar tipo global" else tipo_local
+meta = int(row_sel["meta_total"])
+avance = int(row_sel["avance"])
+restante = max(0, meta - avance)
+pct = float(row_sel["porcentaje_val"])  # 1 decimal, igual que en la tabla
 
-        # ----- BARRAS: Avance vs Restante -----
-        if tipo == "Barras":
-            fig, ax = plt.subplots()
-            ax.bar(["Avance", "Restante"], [avance, restante])
-            ax.set_ylim(0, max(meta, 1))
-            ax.set_ylabel("Cantidad")
-            ax.set_title(f"Avance vs Restante (Meta {meta})")
-            st.pyplot(fig, clear_figure=True)
+tipo = st.radio("Tipo de gráfico", ["Barras", "Circular", "Lineal"], index=0, horizontal=True, key="tipo_uno_por_uno")
 
-        # ----- CIRCULAR: Avance vs Restante -----
-        elif tipo == "Circular":
-            fig, ax = plt.subplots()
-            # Evitar pie vacío
-            valores = [max(avance, 0), max(restante, 0)]
-            etiquetas = ["Avance", "Restante"]
-            if sum(valores) == 0:
-                valores = [1]  # para mostrar disco vacío
-                etiquetas = ["Sin datos"]
-            ax.pie(valores, labels=etiquetas, autopct="%1.0f%%", startangle=90)
-            ax.axis("equal")
-            ax.set_title(f"Distribución de la meta ({meta})")
-            st.pyplot(fig, clear_figure=True)
+def _prep_fig():
+    # Tema oscuro
+    fig, ax = plt.subplots(figsize=(8, 4.5), facecolor="black")
+    ax.set_facecolor("black")
+    ax.tick_params(colors="white")
+    ax.spines["bottom"].set_color("white")
+    ax.spines["left"].set_color("white")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", alpha=0.15, color="white")
+    return fig, ax
 
-        # ----- LINEAL: Evolución del avance en el tiempo -----
-        elif tipo == "Lineal":
-            hist = obtener_historial(f)
-            if not hist:
-                st.info("Sin movimientos aún.")
-            else:
-                dfh = pd.DataFrame(hist)
-                # Fecha dd-mm-YYYY -> datetime
-                dfh["fecha_dt"] = pd.to_datetime(dfh["fecha"], format="%d-%m-%Y", errors="coerce")
-                dfh = dfh.dropna(subset=["fecha_dt"]).sort_values("fecha_dt")
+if tipo == "Barras":
+    fig, ax = _prep_fig()
+    bars = ax.bar(["Avance", "Restante"], [avance, restante],
+                  color=[PASTEL[0], PASTEL[3]], alpha=0.9, edgecolor="white", linewidth=1.2)
+    ax.set_ylim(0, max(meta, 1))
+    ax.set_ylabel("Cantidad", color="white")
+    ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
 
-                # Sumar deltas por día y acumular, recortando a [0, meta]
-                dfh = dfh.groupby("fecha_dt", as_index=False)["delta"].sum().sort_values("fecha_dt")
-                dfh["acum"] = dfh["delta"].cumsum().clip(lower=0, upper=meta)
+    # Etiquetas con cantidad y % real (1 decimal)
+    for b, val in zip(bars, [avance, restante]):
+        perc = (val / meta * 100) if meta else 0.0
+        ax.text(b.get_x() + b.get_width()/2, b.get_height() + (meta * 0.02 if meta else 0.2),
+                f"{val}  ({perc:.1f}%)", ha="center", va="bottom", color="white", fontsize=10)
+    st.pyplot(fig, clear_figure=True)
 
-                fig, ax = plt.subplots()
-                ax.plot(dfh["fecha_dt"], dfh["acum"], marker="o")
-                ax.set_ylim(0, max(meta, 1))
-                ax.set_xlabel("Fecha")
-                ax.set_ylabel("Avance acumulado")
-                ax.set_title(f"Evolución del avance (Meta {meta})")
-                ax.grid(True, alpha=0.3)
-                st.pyplot(fig, clear_figure=True)
+elif tipo == "Circular":
+    fig, ax = _prep_fig()
+    datos = [max(avance, 0), max(restante, 0)]
+    etiquetas = ["Avance", "Restante"]
+
+    if sum(datos) == 0:
+        # Disco vacío amigable
+        datos, etiquetas = [1], ["Sin datos"]
+
+    def autopct_fmt(pct_slice):
+        # Mostrar 1 decimal (como la tabla)
+        return f"{pct_slice:.1f}%"
+
+    wedges, texts, autotexts = ax.pie(
+        datos,
+        labels=etiquetas,
+        autopct=autopct_fmt,
+        startangle=90,
+        colors=[PASTEL[0], PASTEL[3]],
+        wedgeprops=dict(edgecolor="white", linewidth=1.2)
+    )
+    for t in texts + autotexts:
+        t.set_color("white")
+    ax.axis("equal")
+    ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
+    st.pyplot(fig, clear_figure=True)
+
+elif tipo == "Lineal":
+    # Evolución en el tiempo con acumulado (línea pastel)
+    hist = obtener_historial(int(row_sel["fila"]))
+    if not hist:
+        st.info("Sin movimientos aún.")
+    else:
+        dfh = pd.DataFrame(hist)
+        dfh["fecha_dt"] = pd.to_datetime(dfh["fecha"], format="%d-%m-%Y", errors="coerce")
+        dfh = dfh.dropna(subset=["fecha_dt"]).sort_values("fecha_dt")
+        dfh = dfh.groupby("fecha_dt", as_index=False)["delta"].sum().sort_values("fecha_dt")
+        dfh["acum"] = dfh["delta"].cumsum().clip(lower=0, upper=meta)
+
+        fig, ax = _prep_fig()
+        ax.plot(dfh["fecha_dt"], dfh["acum"], marker="o", linewidth=2.2, color=PASTEL[6], alpha=0.95)
+        ax.set_ylim(0, max(meta, 1))
+        ax.set_xlabel("Fecha", color="white")
+        ax.set_ylabel("Avance acumulado", color="white")
+        ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
+
+        # Anotación del último punto con % real (1 decimal)
+        x_last = dfh["fecha_dt"].iloc[-1]
+        y_last = dfh["acum"].iloc[-1]
+        perc_last = (y_last / meta * 100) if meta else 0.0
+        ax.scatter([x_last], [y_last], s=60, color="white", zorder=3)
+        ax.text(x_last, y_last, f" {y_last} ({perc_last:.1f}%)", color="white", va="bottom")
+
+        # Línea guía de meta
+        ax.hlines(meta, xmin=dfh["fecha_dt"].min(), xmax=dfh["fecha_dt"].max(),
+                  linestyles="dashed", colors="white", alpha=0.25)
+        st.pyplot(fig, clear_figure=True)
 
 
 
