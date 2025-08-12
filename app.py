@@ -86,7 +86,7 @@ def ensure_schema(conn, metas_seed):
     END;
 
     CREATE TRIGGER IF NOT EXISTS movimientos_au
-    AFTER UPDATE ON movimientos
+    AFTER UPDATE ON MOVIMIENTOS
     BEGIN
       INSERT INTO movimientos_log(action,id,fila,fecha,
                                   cantidad_old,cantidad_new,
@@ -280,7 +280,7 @@ for _, r in df_base.iterrows():
 df = pd.DataFrame(rows)
 
 st.dataframe(
-    df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]],  # visible (igual que antes)
+    df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]],
     use_container_width=True
 )
 
@@ -377,14 +377,17 @@ avance_total = df["avance"].sum()
 pct_total = (avance_total / meta_total_sum) * 100 if meta_total_sum else 0
 st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 
-# ---- Descargar Excel (más claro, en varias hojas) ----
+# ---- Descargar Excel (más claro, con estilos y sin 'delta') ----
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 buffer = BytesIO()
 
 # Hoja 1: RESUMEN (como en pantalla) + cantidad de movimientos
 df_resumen = df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]].copy()
 df_resumen["movimientos"] = df["fila"].apply(lambda f: len(st.session_state.get(f"hist_{int(f)}", [])))
 
-# Hoja 2: HISTORIAL (una fila por movimiento)
+# Hoja 2: HISTORIAL (una fila por movimiento, SIN 'delta')
 hist_rows = []
 for _, row in df.iterrows():
     f = int(row["fila"])
@@ -395,7 +398,7 @@ for _, row in df.iterrows():
             "actividad": actividad,
             "fecha": m.get("fecha", ""),
             "cantidad": int(m.get("cantidad", 0)),
-            "delta": int(m.get("delta", 0)),
+            # 'delta' eliminado
             "nota": m.get("nota", ""),
         })
 df_hist = pd.DataFrame(hist_rows)
@@ -406,13 +409,41 @@ if not df_hist.empty:
 else:
     df_respaldo = pd.DataFrame(columns=["fila", "actividad", "fecha", "nota"])
 
-# Escribir a un único .xlsx con múltiples hojas
+def estilizar_hoja(ws, tab_color_hex):
+    """Aplica color a la pestaña y estilos a encabezados."""
+    ws.sheet_properties.tabColor = tab_color_hex
+    header_fill = PatternFill("solid", fgColor="1E88E5")  # azul intenso
+    header_font = Font(color="FFFFFF", bold=True)
+    align_center = Alignment(horizontal="center", vertical="center")
+    thin = Side(border_style="thin", color="D0D0D0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    max_col = ws.max_column
+    for col in range(1, max_col + 1):
+        cell = ws.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = align_center
+        cell.border = border
+        col_letter = get_column_letter(col)
+        ws.column_dimensions[col_letter].width = max(12, min(60, len(str(cell.value)) + 6))
+
+    ws.freeze_panes = "A2"
+
 with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
     df_resumen.to_excel(writer, index=False, sheet_name="Resumen")
     if not df_hist.empty:
         df_hist.to_excel(writer, index=False, sheet_name="Historial")
     if not df_respaldo.empty:
         df_respaldo.to_excel(writer, index=False, sheet_name="Respaldo (notas)")
+
+    wb = writer.book
+    if "Resumen" in writer.sheets:
+        estilizar_hoja(writer.sheets["Resumen"], tab_color_hex="1E88E5")   # azul
+    if "Historial" in writer.sheets:
+        estilizar_hoja(writer.sheets["Historial"], tab_color_hex="E53935") # rojo
+    if "Respaldo (notas)" in writer.sheets:
+        estilizar_hoja(writer.sheets["Respaldo (notas)"], tab_color_hex="43A047")  # verde
 
 buffer.seek(0)
 st.download_button(
