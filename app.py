@@ -374,7 +374,7 @@ st.download_button(
 # =========================
 # 9) 📊 Visualizaciones por meta (ocultas hasta seleccionar)
 # =========================
-st.markdown("### 📊 Visualizaciones por meta (uno por uno)")
+st.markdown("### 📊 Visualizaciones por meta")
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -475,6 +475,7 @@ else:
         ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
 
         st.pyplot(fig, clear_figure=True)
+
 
 
 
