@@ -4,11 +4,11 @@ from io import BytesIO
 from datetime import datetime
 import sqlite3
 
-# ===== Conexión existente (sin cambios) =====
+# ===== Conexión existente =====
 CONN = sqlite3.connect("avances.db", check_same_thread=False)
 CONN.execute("PRAGMA foreign_keys = ON")
 
-# ===== Helpers de BD (añadidos mínimos) =====
+# ===== Helpers de BD =====
 def db_insert_mov(fila, fecha, cantidad, delta, nota):
     cur = CONN.cursor()
     cur.execute(
@@ -43,6 +43,112 @@ def db_load_hist(fila):
         for r in rows
     ]
 
+def ensure_schema(conn, metas_seed):
+    """Crea tablas/vistas/trigger si no existen y precarga metas si está vacío."""
+    cur = conn.cursor()
+    # Tablas básicas
+    cur.executescript("""
+    CREATE TABLE IF NOT EXISTS metas (
+      fila       INTEGER PRIMARY KEY,
+      actividad  TEXT    NOT NULL,
+      meta_total INTEGER NOT NULL CHECK (meta_total >= 0)
+    );
+    CREATE TABLE IF NOT EXISTS movimientos (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      fila       INTEGER NOT NULL REFERENCES metas(fila) ON DELETE CASCADE ON UPDATE CASCADE,
+      fecha      TEXT    NOT NULL,
+      cantidad   INTEGER NOT NULL CHECK (cantidad >= 0),
+      delta      INTEGER NOT NULL,
+      nota       TEXT    DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS movimientos_log (
+      log_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      action       TEXT NOT NULL CHECK (action IN ('INSERT','UPDATE','DELETE')),
+      id           INTEGER,
+      fila         INTEGER,
+      fecha        TEXT,
+      cantidad_old INTEGER,
+      cantidad_new INTEGER,
+      delta_old    INTEGER,
+      delta_new    INTEGER,
+      nota_old     TEXT,
+      nota_new     TEXT,
+      action_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_mov_fila ON movimientos(fila);
+
+    CREATE TRIGGER IF NOT EXISTS movimientos_ai
+    AFTER INSERT ON movimientos
+    BEGIN
+      INSERT INTO movimientos_log(action,id,fila,fecha,cantidad_new,delta_new,nota_new)
+      VALUES('INSERT', NEW.id, NEW.fila, NEW.fecha, NEW.cantidad, NEW.delta, NEW.nota);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS movimientos_au
+    AFTER UPDATE ON movimientos
+    BEGIN
+      INSERT INTO movimientos_log(action,id,fila,fecha,
+                                  cantidad_old,cantidad_new,
+                                  delta_old,delta_new,
+                                  nota_old,nota_new)
+      VALUES('UPDATE', NEW.id, NEW.fila, NEW.fecha,
+             OLD.cantidad, NEW.cantidad,
+             OLD.delta,    NEW.delta,
+             OLD.nota,     NEW.nota);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS movimientos_ad
+    AFTER DELETE ON movimientos
+    BEGIN
+      INSERT INTO movimientos_log(action,id,fila,fecha,cantidad_old,delta_old,nota_old)
+      VALUES('DELETE', OLD.id, OLD.fila, OLD.fecha, OLD.cantidad, OLD.delta, OLD.nota);
+    END;
+
+    CREATE VIEW IF NOT EXISTS resumen_por_meta AS
+    WITH s AS (
+      SELECT m.fila, m.actividad, m.meta_total, COALESCE(SUM(t.delta),0) AS avance_raw
+      FROM metas m
+      LEFT JOIN movimientos t ON t.fila = m.fila
+      GROUP BY m.fila, m.actividad, m.meta_total
+    ),
+    c AS (
+      SELECT fila, actividad, meta_total,
+             CASE WHEN avance_raw < 0 THEN 0
+                  WHEN avance_raw > meta_total THEN meta_total
+                  ELSE avance_raw END AS avance
+      FROM s
+    )
+    SELECT
+      fila,
+      actividad,
+      meta_total,
+      avance,
+      (meta_total - avance) AS limite_restante,
+      (ROUND(100.0 * avance / meta_total, 1) || '%') AS porcentaje,
+      CASE
+        WHEN avance >= meta_total THEN 'Completa'
+        WHEN avance > 0           THEN 'En curso'
+        ELSE 'Pendiente'
+      END AS estado
+    FROM c
+    ORDER BY fila;
+
+    CREATE VIEW IF NOT EXISTS historial_por_meta AS
+    SELECT id, fila, fecha, cantidad, nota, delta, created_at
+    FROM movimientos
+    ORDER BY fila, id;
+    """)
+    # Precarga de metas si no hay registros
+    cur.execute("SELECT COUNT(*) FROM metas")
+    count = cur.fetchone()[0]
+    if count == 0:
+        cur.executemany(
+            "INSERT INTO metas (fila, actividad, meta_total) VALUES (?, ?, ?)",
+            [(m["fila"], m["actividad"], m["meta_total"]) for m in metas_seed]
+        )
+    conn.commit()
+
 st.subheader("📈 Avances por meta")
 
 # ---- Metas base (meta_total original) ----
@@ -60,6 +166,9 @@ metas = [
 ]
 df_base = pd.DataFrame(metas)
 
+# >>> Bootstrap de esquema y metas (clave para evitar el OperationalError)
+ensure_schema(CONN, metas)
+
 # ---- Inicializar estado ----
 for _, r in df_base.iterrows():
     f = int(r.fila)
@@ -68,9 +177,9 @@ for _, r in df_base.iterrows():
     st.session_state.setdefault(f"restante_{f}", int(r.meta_total))     # restante
     # historial: [{fecha(dd-mm-YYYY), cantidad, nota, delta, db_id}]
     st.session_state.setdefault(f"hist_{f}", [])
-    st.session_state.setdefault(f"mov_val_{f}", 0)                      # input movimiento (número)
-    st.session_state.setdefault(f"nota_inline_{f}", "")                 # nota del movimiento
-    st.session_state.setdefault(f"reset_mov_{f}", False)                # flag para limpiar a 0
+    st.session_state.setdefault(f"mov_val_{f}", 0)
+    st.session_state.setdefault(f"nota_inline_{f}", "")
+    st.session_state.setdefault(f"reset_mov_{f}", False)
 
 # ---- Cargar historial desde BD (una sola vez por fila) ----
 st.session_state.setdefault("loaded_from_db", {})
@@ -80,7 +189,6 @@ for _, r in df_base.iterrows():
         hist_db = db_load_hist(f)
         if hist_db:
             st.session_state[f"hist_{f}"] = hist_db
-            # Recalcular avance y restante a partir de la BD (respetando 0..meta_total)
             meta_total = st.session_state[f"meta_total_{f}"]
             suma = sum(i["delta"] for i in hist_db)
             avance_clamped = max(0, min(meta_total, suma))
@@ -92,7 +200,6 @@ for _, r in df_base.iterrows():
 for _, r in df_base.iterrows():
     f = int(r.fila)
 
-    # Si se marcó reset en el ciclo anterior, limpiar antes de renderizar los widgets
     if st.session_state.get(f"reset_mov_{f}", False):
         st.session_state[f"mov_val_{f}"] = 0
         st.session_state[f"nota_inline_{f}"] = ""
@@ -106,7 +213,6 @@ for _, r in df_base.iterrows():
 
     c1, c2, c3 = st.columns([1.1, 2.2, 1])
     with c1:
-        # Movimiento con stepper − / +
         st.number_input(
             "Movimiento",
             key=f"mov_val_{f}",
@@ -127,13 +233,11 @@ for _, r in df_base.iterrows():
             meta_total = st.session_state[f"meta_total_{f}"]
             avance    = st.session_state[f"avance_{f}"]
 
-            # Aplica dentro de 0..meta_total
             nuevo_avance = max(0, min(meta_total, avance + mov))
             delta_real = nuevo_avance - avance
             st.session_state[f"avance_{f}"] = nuevo_avance
             st.session_state[f"restante_{f}"] = meta_total - nuevo_avance
 
-            # Guardar registro en historial (fecha, cantidad=|delta_real|, nota, delta con signo)
             nota_mov = (st.session_state[f"nota_inline_{f}"] or "").strip()
             cantidad = abs(int(delta_real))
             if nota_mov or cantidad > 0:
@@ -143,12 +247,10 @@ for _, r in df_base.iterrows():
                     "nota": nota_mov,
                     "delta": int(delta_real),
                 }
-                # Persistir en BD y guardar el id
                 new_id = db_insert_mov(f, item["fecha"], item["cantidad"], item["delta"], item["nota"])
                 item["db_id"] = new_id
                 st.session_state[f"hist_{f}"].append(item)
 
-            # marcar reset para limpiar a 0 y forzar rerun (refresca métrica)
             st.session_state[f"reset_mov_{f}"] = True
             st.rerun()
 
@@ -163,7 +265,6 @@ for _, r in df_base.iterrows():
     restante = st.session_state[f"restante_{f}"]
     pct = round((avance / meta_total) * 100, 1) if meta_total else 0.0
     estado = "Completa" if pct >= 100 else ("En curso" if avance > 0 else "Pendiente")
-    # Respaldo (solo texto, concatenado) derivado del historial
     notas = [i.get("nota", "") for i in st.session_state.get(f"hist_{f}", []) if i.get("nota", "")]
     respaldo = " | ".join(notas)
     rows.append({
@@ -178,13 +279,11 @@ for _, r in df_base.iterrows():
     })
 df = pd.DataFrame(rows)
 
-# ---- Tabla resumen ----
 st.dataframe(
     df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]],
     use_container_width=True
 )
 
-# ---- Burbuja: ver/editar/eliminar historial (Fecha, Cantidad, Nota) ----
 st.markdown("#### Resumen interactivo (clic en el **avance** para ver/editar historial)")
 for _, r in df.iterrows():
     f = int(r["fila"])
@@ -206,7 +305,6 @@ for _, r in df.iterrows():
             if not hist:
                 st.caption("Sin movimientos registrados aún.")
             else:
-                # Tabla simple
                 df_hist_view = pd.DataFrame([
                     {"Fecha": i["fecha"], "Cantidad": i["cantidad"], "Nota": i.get("nota", "")}
                     for i in hist
@@ -214,7 +312,6 @@ for _, r in df.iterrows():
                 st.table(df_hist_view)
 
                 st.markdown("**Editar / eliminar**")
-                # Controles por registro
                 for i, item in enumerate(hist):
                     ec1, ec2, ec3, ec4 = st.columns([1, 1, 3, 1.2])
                     with ec1:
@@ -231,47 +328,38 @@ for _, r in df.iterrows():
                             key=f"edit_nota_{f}_{i}"
                         )
                     with ec4:
-                        # Guardar cambios
                         if st.button("💾 Guardar", key=f"save_edit_{f}_{i}"):
-                            # Ajusta avance según cambio de cantidad, manteniendo el signo original
-                            old_delta = int(item.get("delta", item["cantidad"]))  # si no hay delta, asume positivo
+                            old_delta = int(item.get("delta", item["cantidad"]))
                             sign = 1 if old_delta >= 0 else -1
                             new_delta = sign * int(nueva_cant)
 
                             delta_diff = new_delta - old_delta
-                            # Actualiza acumulado y restante con límites
                             meta_total = st.session_state[f"meta_total_{f}"]
                             new_avance = max(0, min(meta_total, st.session_state[f"avance_{f}"] + delta_diff))
                             st.session_state[f"avance_{f}"] = new_avance
                             st.session_state[f"restante_{f}"] = meta_total - new_avance
 
-                            # Guarda cambios en el ítem
                             item["cantidad"] = int(nueva_cant)
                             item["nota"] = nueva_nota
                             item["delta"] = int(new_delta)
 
-                            # Persistir edición en BD si hay id
                             mov_id = item.get("db_id", None)
                             if mov_id:
                                 db_update_mov(mov_id, nueva_cant, new_delta, nueva_nota)
 
                             st.rerun()
 
-                        # Eliminar registro
                         if st.button("🗑️ Eliminar", key=f"del_{f}_{i}"):
-                            # Revertir el efecto del delta sobre el avance
                             old_delta = int(item.get("delta", item["cantidad"]))
                             meta_total = st.session_state[f"meta_total_{f}"]
                             new_avance = max(0, min(meta_total, st.session_state[f"avance_{f}"] - old_delta))
                             st.session_state[f"avance_{f}"] = new_avance
                             st.session_state[f"restante_{f}"] = meta_total - new_avance
 
-                            # Borrar en BD si existe id
                             mov_id = item.get("db_id", None)
                             if mov_id:
                                 db_delete_mov(mov_id)
 
-                            # Quitar del historial
                             del st.session_state[f"hist_{f}"][i]
                             st.rerun()
 
@@ -292,7 +380,6 @@ st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 # ---- Descargar Excel ----
 buffer = BytesIO()
 df_export = df.drop(columns=["fila"]).copy()
-# Columna 'historial' con "DD-MM-YYYY — cantidad — nota"
 hist_texts = []
 for _, row in df.iterrows():
     f = int(row["fila"])
