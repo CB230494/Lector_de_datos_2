@@ -26,18 +26,15 @@ for _, r in df_base.iterrows():
     st.session_state.setdefault(f"meta_total_{f}", int(r.meta_total))   # meta original
     st.session_state.setdefault(f"avance_{f}", 0)                       # acumulado
     st.session_state.setdefault(f"restante_{f}", int(r.meta_total))     # restante
-    st.session_state.setdefault(f"hist_{f}", [])                        # historial: [{fecha, cantidad, nota}]
+    st.session_state.setdefault(f"hist_{f}", [])                        # [{fecha(dd-mm-YYYY), cantidad, nota}]
     st.session_state.setdefault(f"mov_val_{f}", 0)                      # input movimiento (número)
     st.session_state.setdefault(f"nota_inline_{f}", "")                 # nota del movimiento
-    st.session_state.setdefault(f"cant_inline_{f}", 0)                  # cantidad del día (movimiento)
     st.session_state.setdefault(f"reset_mov_{f}", False)                # flag para limpiar a 0
-    st.session_state.setdefault(f"nota_popup_{f}", "")                  # nota desde popover
-    st.session_state.setdefault(f"cant_popup_{f}", 0)                   # cantidad desde popover
 
 st.markdown(
     "Usa los botones **− / +** para ajustar el **Movimiento**. "
     "Al **guardar**, se aplica al acumulado, se actualiza el **límite restante** y el campo vuelve a **0**. "
-    "La *nota del movimiento* y la **cantidad del día** quedan guardadas con **fecha (DD-MM-YYYY)**."
+    "La *Cantidad* se registra automáticamente como **|movimiento aplicado|**."
 )
 
 # ---- UI por fila (manejo de reset ANTES de crear el widget) ----
@@ -48,7 +45,6 @@ for _, r in df_base.iterrows():
     if st.session_state.get(f"reset_mov_{f}", False):
         st.session_state[f"mov_val_{f}"] = 0
         st.session_state[f"nota_inline_{f}"] = ""
-        st.session_state[f"cant_inline_{f}"] = 0
         st.session_state[f"reset_mov_{f}"] = False
 
     colA, colB = st.columns([2.2, 1])
@@ -57,7 +53,7 @@ for _, r in df_base.iterrows():
     with colB:
         st.metric("Límite restante", st.session_state[f"restante_{f}"])
 
-    c1, c2, c3, c4 = st.columns([1.1, 1.3, 2, 1])
+    c1, c2, c3 = st.columns([1.1, 2.2, 1])
     with c1:
         # Movimiento con stepper − / +
         st.number_input(
@@ -69,21 +65,12 @@ for _, r in df_base.iterrows():
             help="− resta (avanza), + suma (devuelve). Empieza en 0."
         )
     with c2:
-        # Cantidad del día (si no pones nada, se toma |movimiento|)
-        st.number_input(
-            "Cantidad del día",
-            key=f"cant_inline_{f}",
-            step=1, format="%d",
-            min_value=0,
-            help="Cantidad de operativos/acciones de hoy. Si queda en 0, se usa |mov|."
-        )
-    with c3:
         st.text_input(
             "Nota del movimiento (opcional)",
             key=f"nota_inline_{f}",
             placeholder="Breve descripción…"
         )
-    with c4:
+    with c3:
         if st.button("Guardar movimiento", key=f"guardar_{f}"):
             mov = int(st.session_state[f"mov_val_{f}"])
             meta_total = st.session_state[f"meta_total_{f}"]
@@ -95,11 +82,9 @@ for _, r in df_base.iterrows():
             st.session_state[f"avance_{f}"] = nuevo_avance
             st.session_state[f"restante_{f}"] = meta_total - nuevo_avance
 
-            # Guardar registro en historial (fecha, cantidad, nota)
+            # Guardar registro en historial (fecha, cantidad=|delta_real|, nota)
             nota_mov = (st.session_state[f"nota_inline_{f}"] or "").strip()
-            cant_in  = int(st.session_state[f"cant_inline_{f}"] or 0)
-            cantidad = cant_in if cant_in > 0 else abs(delta_real)
-
+            cantidad = abs(int(delta_real))
             if nota_mov or cantidad > 0:
                 st.session_state[f"hist_{f}"].append({
                     "fecha": datetime.now().strftime("%d-%m-%Y"),
@@ -147,8 +132,8 @@ st.dataframe(
     use_container_width=True
 )
 
-# ---- Burbuja: muestra NOTAS con FECHA y CANTIDAD; permite agregar más notas con cantidad ----
-st.markdown("#### Resumen interactivo (clic en el **avance** para ver/añadir notas con fecha y cantidad)")
+# ---- Burbuja: SOLO visualizar historial (Fecha, Cantidad, Nota) ----
+st.markdown("#### Resumen interactivo (clic en el **avance** para ver historial)")
 for _, r in df.iterrows():
     f = int(r["fila"])
     c1, c2, c3, c4, c5, c6 = st.columns([4, 1.1, 1.1, 1.1, 1.2, 1.8])
@@ -164,45 +149,15 @@ for _, r in df.iterrows():
         st.caption("avance")
         with st.popover(f"{int(r['avance'])}"):
             st.markdown(f"**Notas registradas — {r['actividad']}**")
-
-            # Mostrar historial (Fecha, Cantidad, Nota)
             hist = st.session_state.get(f"hist_{f}", [])
             if hist:
-                df_hist = pd.DataFrame(hist).rename(columns={"fecha": "Fecha", "cantidad": "Cantidad", "nota": "Nota"})
-                # Asegura orden de columnas
+                df_hist = pd.DataFrame(hist).rename(
+                    columns={"fecha": "Fecha", "cantidad": "Cantidad", "nota": "Nota"}
+                )
                 df_hist = df_hist[["Fecha", "Cantidad", "Nota"]]
                 st.table(df_hist)
             else:
                 st.caption("Sin notas registradas aún.")
-
-            # Agregar nueva nota SIN movimiento
-            st.markdown("**Agregar nota (opcional)**")
-            cnp1, cnp2 = st.columns([1.1, 2])
-            with cnp1:
-                st.number_input(
-                    "Cantidad del día",
-                    key=f"cant_popup_{f}",
-                    step=1, format="%d", min_value=0
-                )
-            with cnp2:
-                st.text_area(
-                    "Escribe una nota para registrar hoy",
-                    key=f"nota_popup_{f}",
-                    height=120,
-                    placeholder="Describe brevemente lo realizado…"
-                )
-            if st.button("Guardar nota", key=f"save_nota_{f}"):
-                texto = (st.session_state.get(f"nota_popup_{f}", "") or "").strip()
-                cantp = int(st.session_state.get(f"cant_popup_{f}", 0) or 0)
-                if texto or cantp > 0:
-                    st.session_state[f"hist_{f}"].append({
-                        "fecha": datetime.now().strftime("%d-%m-%Y"),
-                        "cantidad": int(cantp),
-                        "nota": texto
-                    })
-                    st.success("Nota guardada")
-                else:
-                    st.warning("Agrega una nota o una cantidad antes de guardar.")
     with c5:
         st.caption("porcentaje")
         st.write(r["porcentaje"])
@@ -221,7 +176,7 @@ st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 buffer = BytesIO()
 df_export = df.drop(columns=["fila"]).copy()
 
-# Agrega columna 'historial' con "DD-MM-YYYY — cantidad — nota" concatenado
+# Columna 'historial' con "DD-MM-YYYY — cantidad — nota"
 hist_texts = []
 for _, row in df.iterrows():
     f = int(row["fila"])
