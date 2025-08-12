@@ -280,7 +280,7 @@ for _, r in df_base.iterrows():
 df = pd.DataFrame(rows)
 
 st.dataframe(
-    df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]],
+    df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]],  # visible (igual que antes)
     use_container_width=True
 )
 
@@ -377,16 +377,43 @@ avance_total = df["avance"].sum()
 pct_total = (avance_total / meta_total_sum) * 100 if meta_total_sum else 0
 st.metric("Avance total (todas las metas)", f"{pct_total:.1f}%")
 
-# ---- Descargar Excel ----
+# ---- Descargar Excel (más claro, en varias hojas) ----
 buffer = BytesIO()
-df_export = df.drop(columns=["fila"]).copy()
-hist_texts = []
+
+# Hoja 1: RESUMEN (como en pantalla) + cantidad de movimientos
+df_resumen = df[["actividad", "meta_total", "avance", "limite_restante", "porcentaje", "estado"]].copy()
+df_resumen["movimientos"] = df["fila"].apply(lambda f: len(st.session_state.get(f"hist_{int(f)}", [])))
+
+# Hoja 2: HISTORIAL (una fila por movimiento)
+hist_rows = []
 for _, row in df.iterrows():
     f = int(row["fila"])
-    h = st.session_state.get(f"hist_{f}", [])
-    hist_texts.append("; ".join([f"{i.get('fecha','')} — {i.get('cantidad',0)} — {i.get('nota','')}" for i in h]))
-df_export["historial"] = hist_texts
-df_export.to_excel(buffer, index=False)
+    actividad = row["actividad"]
+    for m in st.session_state.get(f"hist_{f}", []):
+        hist_rows.append({
+            "fila": f,
+            "actividad": actividad,
+            "fecha": m.get("fecha", ""),
+            "cantidad": int(m.get("cantidad", 0)),
+            "delta": int(m.get("delta", 0)),
+            "nota": m.get("nota", ""),
+        })
+df_hist = pd.DataFrame(hist_rows)
+
+# Hoja 3: RESPALDO (solo notas no vacías)
+if not df_hist.empty:
+    df_respaldo = df_hist[df_hist["nota"].astype(str).str.strip() != ""].loc[:, ["fila", "actividad", "fecha", "nota"]].copy()
+else:
+    df_respaldo = pd.DataFrame(columns=["fila", "actividad", "fecha", "nota"])
+
+# Escribir a un único .xlsx con múltiples hojas
+with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+    df_resumen.to_excel(writer, index=False, sheet_name="Resumen")
+    if not df_hist.empty:
+        df_hist.to_excel(writer, index=False, sheet_name="Historial")
+    if not df_respaldo.empty:
+        df_respaldo.to_excel(writer, index=False, sheet_name="Respaldo (notas)")
+
 buffer.seek(0)
 st.download_button(
     "📥 Descargar desglose en Excel",
@@ -394,15 +421,6 @@ st.download_button(
     file_name="avance_por_meta_movimientos.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
-
-
-
-
-
-
-
-
-
 
 
 
