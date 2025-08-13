@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 st.set_page_config(page_title="Avances por meta", layout="wide")
-st.subheader("📈 Avances por meta")
+st.subheader("📈 Avances por meta - Santa Cruz")
 
 # =========================
 # 1) CONFIG DB & DATOS BASE
@@ -729,6 +729,7 @@ else:
         ax.axis("equal")
         ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
         st.pyplot(fig, clear_figure=True)
+
 
 
 
