@@ -675,6 +675,25 @@ def _prep_fig():
     ax.grid(axis="y", alpha=0.15, color="white")
     return fig, ax
 
+# 🔽 Nuevo helper: descarga el gráfico actual como PNG (300 dpi)
+def _download_png(fig, base_name: str, key_suffix: str):
+    img_bytes = BytesIO()
+    fig.savefig(
+        img_bytes,
+        format="png",
+        dpi=300,
+        bbox_inches="tight",
+        facecolor=fig.get_facecolor()  # respeta el fondo negro
+    )
+    img_bytes.seek(0)
+    st.download_button(
+        "📷 Descargar gráfico (PNG)",
+        data=img_bytes,
+        file_name=f"{base_name}.png",
+        mime="image/png",
+        key=f"dl_{key_suffix}"
+    )
+
 _df_opts = df[["fila", "actividad", "meta_total", "avance", "limite_restante", "porcentaje_val"]].copy()
 _df_opts["op"] = _df_opts["fila"].astype(str) + " — " + _df_opts["actividad"]
 placeholder = "— Selecciona una meta —"
@@ -712,6 +731,11 @@ else:
             perc = (val / meta * 100) if meta else 0.0
             ax.text(b.get_x() + b.get_width()/2, b.get_height() + (y_max * 0.03),
                     f"{val}  ({perc:.1f}%)", ha="center", va="bottom", color="white", fontsize=10)
+
+        # ⬇️ Descarga PNG del gráfico actual
+        base_name = f"santacruz_meta{fila_sel}_barras_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        _download_png(fig, base_name, key_suffix=f"{fila_sel}_barras")
+
         st.pyplot(fig, clear_figure=True)
 
     elif tipo == "Circular":
@@ -728,7 +752,14 @@ else:
             t.set_color("white")
         ax.axis("equal")
         ax.set_title(f"{row_sel['actividad']} — Meta {meta}  |  Avance total: {pct:.1f}%", color="white")
+
+        # ⬇️ Descarga PNG del gráfico actual
+        base_name = f"santacruz_meta{fila_sel}_circular_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        _download_png(fig, base_name, key_suffix=f"{fila_sel}_circular")
+
         st.pyplot(fig, clear_figure=True)
+
+
 
 
 
